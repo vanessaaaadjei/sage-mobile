@@ -1,6 +1,7 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, spacing, typography } from '../theme';
+import { Button } from './Button';
 
 type Props = {
   payload: string | null;
@@ -14,13 +15,13 @@ export function ReceiptModal({ payload, printerName, onClose }: Props) {
     <Modal transparent animationType="slide" visible onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>Sent to {printerName}</Text>
+          <View style={styles.handle} />
+          <Text style={styles.title}>Receipt</Text>
+          <Text style={styles.sub}>Sent to {printerName}</Text>
           <ScrollView style={styles.paper} contentContainerStyle={styles.paperContent}>
             <Text style={styles.mono}>{payload}</Text>
           </ScrollView>
-          <Pressable style={styles.primary} onPress={onClose}>
-            <Text style={styles.primaryText}>Done</Text>
-          </Pressable>
+          <Button label="Done" onPress={onClose} />
         </View>
       </View>
     </Modal>
@@ -31,16 +32,17 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(16, 24, 40, 0.55)', justifyContent: 'flex-end' },
   card: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     padding: spacing.xl,
+    paddingTop: spacing.md,
     gap: spacing.md,
     maxHeight: '85%',
   },
-  title: { fontSize: 16, fontWeight: '700', color: colors.text },
+  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border },
+  title: typography.heading,
+  sub: { ...typography.caption, marginTop: -spacing.sm },
   paper: { backgroundColor: colors.surfaceMuted, borderRadius: radius.md },
   paperContent: { padding: spacing.lg },
   mono: { fontFamily: 'monospace', fontSize: 12, color: colors.text, lineHeight: 18 },
-  primary: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  primaryText: { color: '#fff', fontWeight: '700' },
 });

@@ -1,19 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Redirect } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../components/Button';
 import { usePos } from '../state/PosProvider';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, shadow, spacing, typography } from '../theme';
 
 export default function SignInScreen() {
   const { ready, rep, signIn } = usePos();
@@ -37,66 +30,103 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-        <View style={styles.brand}>
-          <Text style={styles.brandMark}>VAN POS</Text>
-          <Text style={styles.brandSub}>Sage ERP field sales terminal</Text>
+    <View style={styles.root}>
+      <SafeAreaView style={styles.hero} edges={['top']}>
+        <View style={styles.heroInner}>
+          <View style={styles.logo}>
+            <Ionicons name="storefront" size={26} color={colors.primary} />
+          </View>
+          <Text style={styles.brand}>Van POS</Text>
+          <Text style={styles.tagline}>Sell on the route. Sync when you&apos;re back.</Text>
         </View>
+      </SafeAreaView>
 
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.body}>
         <View style={styles.card}>
-          <Text style={styles.label}>Rep ID</Text>
-          <TextInput
-            style={styles.input}
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            accessibilityLabel="Rep ID"
-          />
-          <Text style={styles.label}>PIN</Text>
-          <TextInput
-            style={styles.input}
-            value={pin}
-            onChangeText={setPin}
-            secureTextEntry
-            keyboardType="number-pad"
-            accessibilityLabel="PIN"
-          />
+          <Text style={styles.heading}>Welcome back</Text>
+          <Text style={styles.sub}>Sign in with your rep ID and PIN.</Text>
+
+          <View style={styles.field}>
+            <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              placeholder="Rep ID"
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel="Rep ID"
+            />
+          </View>
+          <View style={styles.field}>
+            <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              value={pin}
+              onChangeText={setPin}
+              secureTextEntry
+              keyboardType="number-pad"
+              placeholder="PIN"
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel="PIN"
+            />
+          </View>
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable style={[styles.primary, (busy || !ready) && styles.disabled]} disabled={busy || !ready} onPress={submit}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Sign in</Text>}
-          </Pressable>
+
+          <Button label="Sign in" icon="arrow-forward" onPress={submit} loading={busy} disabled={!ready} style={styles.submit} />
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  container: { flex: 1, padding: spacing.xl, justifyContent: 'center', gap: spacing.xl, maxWidth: 520, width: '100%', alignSelf: 'center' },
-  brand: { gap: spacing.xs },
-  brandMark: { fontSize: 32, fontWeight: '800', color: colors.primary, letterSpacing: 2 },
-  brandSub: { fontSize: 14, color: colors.textMuted },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, gap: spacing.sm },
-  label: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginTop: spacing.sm },
-  input: {
+  root: { flex: 1, backgroundColor: colors.primary },
+  hero: { backgroundColor: colors.primary },
+  heroInner: { paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, paddingBottom: spacing.xxl + spacing.lg, gap: spacing.sm },
+  logo: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  brand: { ...typography.display, color: colors.textOnPrimary },
+  tagline: { fontSize: 15, color: 'rgba(255,255,255,0.8)' },
+  body: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    marginTop: -radius.xl,
+    padding: spacing.xl,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    gap: spacing.md,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+    ...shadow.card,
+  },
+  heading: typography.heading,
+  sub: { ...typography.caption, marginTop: -spacing.sm, marginBottom: spacing.sm },
+  field: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: 16,
-    color: colors.text,
+    backgroundColor: colors.background,
   },
-  error: { color: colors.danger, fontSize: 13, marginTop: spacing.sm },
-  primary: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md + 2,
-    alignItems: 'center',
-  },
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  disabled: { opacity: 0.5 },
+  input: { flex: 1, paddingVertical: spacing.md + 2, fontSize: 16, color: colors.text },
+  error: { color: colors.danger, fontSize: 13 },
+  submit: { marginTop: spacing.sm },
 });

@@ -9,7 +9,7 @@ export function SyncIndicator({ onPress }: { onPress?: () => void }) {
   const palette = {
     offline: { bg: colors.dangerSoft, fg: colors.danger, label: 'Offline' },
     queued: { bg: colors.warningSoft, fg: colors.warning, label: `${pendingCount} queued` },
-    synced: { bg: colors.successSoft, fg: colors.success, label: 'Outbox clear' },
+    synced: { bg: colors.successSoft, fg: colors.success, label: 'Synced' },
   }[tone];
 
   return (
@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm - 2,
+    height: 38,
     borderRadius: radius.pill,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 
 import { usePos } from '../../state/PosProvider';
-import { colors } from '../../theme';
+import { colors, radius } from '../../theme';
 
 export default function TabsLayout() {
   const { rep, cart, pendingCount } = usePos();
@@ -16,12 +16,15 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 64, paddingTop: 6 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.ink, fontSize: 10, fontWeight: '700', borderRadius: radius.pill },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Catalog',
-          tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" color={color} size={size} />,
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'grid' : 'grid-outline'} color={color} size={size} />,
         }}
       />
       <Tabs.Screen
@@ -29,7 +32,7 @@ export default function TabsLayout() {
         options={{
           title: 'Cart',
           tabBarBadge: cartCount || undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="cart-outline" color={color} size={size} />,
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'cart' : 'cart-outline'} color={color} size={size} />,
         }}
       />
       <Tabs.Screen
@@ -37,14 +40,14 @@ export default function TabsLayout() {
         options={{
           title: 'Orders',
           tabBarBadge: pendingCount || undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="receipt-outline" color={color} size={size} />,
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="stock"
         options={{
           title: 'Van stock',
-          tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" color={color} size={size} />,
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'cube' : 'cube-outline'} color={color} size={size} />,
         }}
       />
     </Tabs>
