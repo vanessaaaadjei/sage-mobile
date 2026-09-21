@@ -11,7 +11,7 @@ import { colors, radius, spacing } from '../../theme';
 
 export default function CatalogScreen() {
   const router = useRouter();
-  const { products, addToCart, availableStock, cart, cartTotals, syncNow, rep } = usePos();
+  const { products, addToCart, availableStock, cart, cartTotals, syncNow, rep, signOut } = usePos();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string>('All');
 
@@ -58,7 +58,14 @@ export default function CatalogScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Screen title="Catalog" subtitle={`Van ${rep?.vanCode ?? ''} · ${products.length} SKUs cached`} onIndicatorPress={syncNow}>
+      <Screen
+        title="Catalog"
+        subtitle={`Van ${rep?.vanCode ?? ''} · ${products.length} SKUs cached`}
+        onIndicatorPress={syncNow}
+        onSignOut={() => {
+          signOut();
+          router.replace('/');
+        }}>
         <View style={styles.controls}>
           <TextInput
             style={styles.search}

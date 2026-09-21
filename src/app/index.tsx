@@ -6,7 +6,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -17,7 +16,7 @@ import { usePos } from '../state/PosProvider';
 import { colors, radius, spacing } from '../theme';
 
 export default function SignInScreen() {
-  const { ready, rep, signIn, online, setOnline, storageBackend } = usePos();
+  const { ready, rep, signIn } = usePos();
   const [username, setUsername] = useState('kwame.mensah');
   const [pin, setPin] = useState('1234');
   const [busy, setBusy] = useState(false);
@@ -67,19 +66,7 @@ export default function SignInScreen() {
           <Pressable style={[styles.primary, (busy || !ready) && styles.disabled]} disabled={busy || !ready} onPress={submit}>
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Sign in</Text>}
           </Pressable>
-          <Text style={styles.hint}>
-            The PIN is checked on the device; connect an auth endpoint to validate it against the depot.
-          </Text>
         </View>
-
-        <View style={styles.connectivity}>
-          <View>
-            <Text style={styles.connectivityLabel}>Network</Text>
-            <Text style={styles.connectivityValue}>{online ? 'Connected' : 'No coverage'}</Text>
-          </View>
-          <Switch value={online} onValueChange={setOnline} />
-        </View>
-        <Text style={styles.footer}>Local store: {storageBackend}</Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -112,16 +99,4 @@ const styles = StyleSheet.create({
   },
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   disabled: { opacity: 0.5 },
-  hint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 18 },
-  connectivity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-  },
-  connectivityLabel: { fontSize: 12, color: colors.textMuted },
-  connectivityValue: { fontSize: 15, fontWeight: '700', color: colors.text },
-  footer: { textAlign: 'center', fontSize: 12, color: colors.textMuted },
 });
