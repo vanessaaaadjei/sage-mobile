@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { QtyStepper } from '../../components/QtyStepper';
@@ -18,11 +18,18 @@ export default function CatalogScreen() {
   const { products, addToCart, setCartQty, availableStock, cart, cartTotals, syncNow, rep, signOut } = usePos();
 
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('All');
+
+  const categories = useMemo(
+    () => ['All', ...[...new Set(products.map((product) => product.category))].sort((a, b) => a.localeCompare(b))],
+    [products],
+  );
 
   const sections = useMemo<Section[]>(() => {
     const needle = query.trim().toLowerCase();
     const groups = new Map<string, Product[]>();
     for (const product of products) {
+      if (category !== 'All' && product.category !== category) continue;
       if (needle && !product.name.toLowerCase().includes(needle) && !product.sku.toLowerCase().includes(needle)) continue;
       const list = groups.get(product.category) ?? [];
       list.push(product);
@@ -31,7 +38,7 @@ export default function CatalogScreen() {
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([title, data]) => ({ title, data: [...data].sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [products, query]);
+  }, [products, query, category]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
@@ -105,6 +112,27 @@ export default function CatalogScreen() {
           ) : null}
         </View>
 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={styles.tabs}
+          contentContainerStyle={styles.tabsContent}>
+          {categories.map((name) => {
+            const active = name === category;
+            return (
+              <Pressable
+                key={name}
+                onPress={() => setCategory(name)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                style={[styles.tab, active && styles.tabActive]}>
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>{name}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
         <SectionList
           sections={sections}
           keyboardShouldPersistTaps="handled"
@@ -116,16 +144,20 @@ export default function CatalogScreen() {
               <Text style={styles.headerCount}>{section.data.length}</Text>
             </View>
           )}
-          stickySectionHeadersEnabled={false}
+          stickySectionHeadersEnabled
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <View style={styles.emptyIcon}>
                 <Ionicons name="cube-outline" size={32} color={colors.primary} />
               </View>
-              <Text style={styles.emptyTitle}>{query ? 'No matches' : 'No products yet'}</Text>
+              <Text style={styles.emptyTitle}>{query || category !== 'All' ? 'No matches' : 'No products yet'}</Text>
               <Text style={styles.empty}>
-                {query ? `Nothing matches “${query}”.` : 'Your catalog will appear here after the first sync.'}
+                {query
+                  ? `Nothing matches “${query}”${category !== 'All' ? ` in ${category}` : ''}.`
+                  : category !== 'All'
+                    ? `No products in ${category}.`
+                    : 'Your catalog will appear here after the first sync.'}
               </Text>
             </View>
           }
@@ -163,6 +195,19 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, paddingVertical: spacing.md, fontSize: 15, color: colors.text },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl * 4, flexGrow: 1 },
+  tabs: { flexGrow: 0, marginTop: spacing.md },
+  tabsContent: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  tab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
+  tabTextActive: { color: colors.textOnPrimary },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -170,6 +215,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
+    backgroundColor: colors.background,
   },
   headerText: typography.heading,
   headerCount: { ...typography.caption, fontWeight: '700' },
