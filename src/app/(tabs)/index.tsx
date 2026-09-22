@@ -1,27 +1,57 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { QtyStepper } from '../../components/QtyStepper';
-import { Screen } from '../../components/Screen';
-import { formatMoney } from '../../core/cart';
-import type { Product } from '../../core/types';
-import { usePos } from '../../state/PosProvider';
-import { colors, radius, shadow, spacing, toneFor, typography } from '../../theme';
+import { QtyStepper } from "../../components/QtyStepper";
+import { Screen } from "../../components/Screen";
+import { formatMoney } from "../../core/cart";
+import type { Product } from "../../core/types";
+import { usePos } from "../../state/PosProvider";
+import {
+  colors,
+  radius,
+  shadow,
+  spacing,
+  toneFor,
+  typography,
+} from "../../theme";
 
 type Section = { title: string; data: Product[] };
 
 export default function CatalogScreen() {
   const router = useRouter();
-  const { products, addToCart, setCartQty, availableStock, cart, cartTotals, syncNow, rep, signOut } = usePos();
+  const {
+    products,
+    addToCart,
+    setCartQty,
+    availableStock,
+    cart,
+    cartTotals,
+    syncNow,
+    rep,
+    signOut,
+  } = usePos();
 
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All");
 
   const categories = useMemo(
-    () => ['All', ...[...new Set(products.map((product) => product.category))].sort((a, b) => a.localeCompare(b))],
+    () => [
+      "All",
+      ...[...new Set(products.map((product) => product.category))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    ],
     [products],
   );
 
@@ -29,20 +59,36 @@ export default function CatalogScreen() {
     const needle = query.trim().toLowerCase();
     const groups = new Map<string, Product[]>();
     for (const product of products) {
-      if (category !== 'All' && product.category !== category) continue;
-      if (needle && !product.name.toLowerCase().includes(needle) && !product.sku.toLowerCase().includes(needle)) continue;
+      if (category !== "All" && product.category !== category) continue;
+      if (
+        needle &&
+        !product.name.toLowerCase().includes(needle) &&
+        !product.sku.toLowerCase().includes(needle)
+      )
+        continue;
       const list = groups.get(product.category) ?? [];
       list.push(product);
       groups.set(product.category, list);
     }
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([title, data]) => ({ title, data: [...data].sort((a, b) => a.name.localeCompare(b.name)) }));
+      .map(([title, data]) => ({
+        title,
+        data: [...data].sort((a, b) => a.name.localeCompare(b.name)),
+      }));
   }, [products, query, category]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const renderItem = ({ item, index, section }: { item: Product; index: number; section: Section }) => {
+  const renderItem = ({
+    item,
+    index,
+    section,
+  }: {
+    item: Product;
+    index: number;
+    section: Section;
+  }) => {
     const stock = availableStock(item.id);
     const inCart = cart.find((line) => line.product.id === item.id)?.qty ?? 0;
     const remaining = stock - inCart;
@@ -60,9 +106,12 @@ export default function CatalogScreen() {
           soldOut && styles.rowSoldOut,
         ]}
         disabled={soldOut || inCart > 0}
-        onPress={() => addToCart(item)}>
+        onPress={() => addToCart(item)}
+      >
         <View style={[styles.monogram, { backgroundColor: tone.bg }]}>
-          <Text style={[styles.monogramText, { color: tone.fg }]}>{item.name.slice(0, 2).toUpperCase()}</Text>
+          <Text style={[styles.monogramText, { color: tone.fg }]}>
+            {item.name.slice(0, 2).toUpperCase()}
+          </Text>
         </View>
         <View style={styles.rowText}>
           <Text style={styles.name} numberOfLines={1}>
@@ -70,14 +119,22 @@ export default function CatalogScreen() {
           </Text>
           <Text style={styles.meta}>
             {formatMoney(item.price)} / {item.unit}
-            {soldOut ? ' · Sold out' : low ? ` · ${remaining} left` : ''}
+            {soldOut ? " · Sold out" : low ? ` · ${remaining} left` : ""}
           </Text>
         </View>
         {inCart > 0 ? (
-          <QtyStepper value={inCart} max={stock} onChange={(qty) => setCartQty(item.id, qty)} />
+          <QtyStepper
+            value={inCart}
+            max={stock}
+            onChange={(qty) => setCartQty(item.id, qty)}
+          />
         ) : (
           <View style={[styles.add, soldOut && styles.addDisabled]}>
-            <Ionicons name="add" size={20} color={soldOut ? colors.textMuted : colors.textOnPrimary} />
+            <Ionicons
+              name="add"
+              size={20}
+              color={soldOut ? colors.textMuted : colors.textOnPrimary}
+            />
           </View>
         )}
       </Pressable>
@@ -85,15 +142,16 @@ export default function CatalogScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <Screen
         title="Catalog"
-        subtitle={`Hi ${rep?.name.split(' ')[0] ?? ''} · Van ${rep?.vanCode ?? ''}`}
+        subtitle={`Hi ${rep?.name.split(" ")[0] ?? ""} · Van ${rep?.vanCode ?? ""}`}
         onIndicatorPress={syncNow}
         onSignOut={() => {
           signOut();
-          router.replace('/');
-        }}>
+          router.replace("/");
+        }}
+      >
         <View style={styles.search}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
           <TextInput
@@ -106,32 +164,46 @@ export default function CatalogScreen() {
             returnKeyType="search"
           />
           {query ? (
-            <Pressable onPress={() => setQuery('')} accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            <Pressable
+              onPress={() => setQuery("")}
+              accessibilityLabel="Clear search"
+            >
+              <Ionicons
+                name="close-circle"
+                size={18}
+                color={colors.textMuted}
+              />
             </Pressable>
           ) : null}
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          style={styles.tabs}
-          contentContainerStyle={styles.tabsContent}>
-          {categories.map((name) => {
-            const active = name === category;
-            return (
-              <Pressable
-                key={name}
-                onPress={() => setCategory(name)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                style={[styles.tab, active && styles.tabActive]}>
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{name}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <View style={styles.tabs}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.tabsContent}
+          >
+            {categories.map((name) => {
+              const active = name === category;
+              return (
+                <Pressable
+                  key={name}
+                  onPress={() => setCategory(name)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  style={[styles.tab, active && styles.tabActive]}
+                >
+                  <Text
+                    style={[styles.tabText, active && styles.tabTextActive]}
+                  >
+                    {name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         <SectionList
           sections={sections}
@@ -149,30 +221,45 @@ export default function CatalogScreen() {
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <View style={styles.emptyIcon}>
-                <Ionicons name="cube-outline" size={32} color={colors.primary} />
+                <Ionicons
+                  name="cube-outline"
+                  size={32}
+                  color={colors.primary}
+                />
               </View>
-              <Text style={styles.emptyTitle}>{query || category !== 'All' ? 'No matches' : 'No products yet'}</Text>
+              <Text style={styles.emptyTitle}>
+                {query || category !== "All" ? "No matches" : "No products yet"}
+              </Text>
               <Text style={styles.empty}>
                 {query
-                  ? `Nothing matches “${query}”${category !== 'All' ? ` in ${category}` : ''}.`
-                  : category !== 'All'
+                  ? `Nothing matches “${query}”${category !== "All" ? ` in ${category}` : ""}.`
+                  : category !== "All"
                     ? `No products in ${category}.`
-                    : 'Your catalog will appear here after the first sync.'}
+                    : "Your catalog will appear here after the first sync."}
               </Text>
             </View>
           }
         />
 
         {cartCount > 0 ? (
-          <Pressable style={styles.bar} onPress={() => router.push('/(tabs)/cart')}>
+          <Pressable
+            style={styles.bar}
+            onPress={() => router.push("/(tabs)/cart")}
+          >
             <View style={styles.barBadge}>
               <Text style={styles.barBadgeText}>{cartCount}</Text>
             </View>
             <View style={styles.barText}>
               <Text style={styles.barLabel}>View cart</Text>
-              <Text style={styles.barTotal}>{formatMoney(cartTotals.total)}</Text>
+              <Text style={styles.barTotal}>
+                {formatMoney(cartTotals.total)}
+              </Text>
             </View>
-            <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
+            <Ionicons
+              name="arrow-forward"
+              size={20}
+              color={colors.textOnPrimary}
+            />
           </Pressable>
         ) : null}
       </Screen>
@@ -184,8 +271,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   search: {
     marginHorizontal: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -193,35 +280,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  searchInput: { flex: 1, paddingVertical: spacing.md, fontSize: 15, color: colors.text },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl * 4, flexGrow: 1 },
-  tabs: { flexGrow: 0, marginTop: spacing.md },
-  tabsContent: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    fontSize: 15,
+    color: colors.text,
+  },
+  list: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl * 4,
+    flexGrow: 1,
+  },
+  tabs: { height: 52, flexShrink: 0, marginTop: spacing.sm },
+  tabsContent: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    alignItems: "center",
+  },
   tab: {
+    height: 36,
+    justifyContent: "center",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
+  tabText: { fontSize: 13, fontWeight: "700", color: colors.textMuted },
   tabTextActive: { color: colors.textOnPrimary },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
     backgroundColor: colors.background,
   },
   headerText: typography.heading,
-  headerCount: { ...typography.caption, fontWeight: '700' },
+  headerCount: { ...typography.caption, fontWeight: "700" },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.md,
     backgroundColor: colors.surface,
     paddingVertical: spacing.md,
@@ -230,22 +331,53 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   rowFirst: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
-  rowLast: { borderBottomWidth: 0, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg },
+  rowLast: {
+    borderBottomWidth: 0,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+  },
   rowPressed: { backgroundColor: colors.surfaceMuted },
   rowSoldOut: { opacity: 0.5 },
-  monogram: { width: 44, height: 44, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  monogramText: { fontSize: 14, fontWeight: '800' },
+  monogram: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monogramText: { fontSize: 14, fontWeight: "800" },
   rowText: { flex: 1, gap: 2 },
-  name: { fontSize: 15, fontWeight: '700', color: colors.text },
+  name: { fontSize: 15, fontWeight: "700", color: colors.text },
   meta: typography.caption,
-  add: { width: 36, height: 36, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  add: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   addDisabled: { backgroundColor: colors.surfaceMuted },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingBottom: spacing.xxl },
-  emptyIcon: { width: 72, height: 72, borderRadius: radius.pill, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingBottom: spacing.xxl,
+  },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
   emptyTitle: typography.heading,
-  empty: { textAlign: 'center', color: colors.textMuted },
+  empty: { textAlign: "center", color: colors.textMuted },
   bar: {
-    position: 'absolute',
+    position: "absolute",
     left: spacing.lg,
     right: spacing.lg,
     bottom: spacing.lg,
@@ -253,14 +385,22 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.md,
     ...shadow.floating,
   },
-  barBadge: { minWidth: 30, height: 30, borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
-  barBadgeText: { color: colors.textOnPrimary, fontWeight: '800' },
+  barBadge: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  barBadgeText: { color: colors.textOnPrimary, fontWeight: "800" },
   barText: { flex: 1 },
-  barLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' },
-  barTotal: { color: colors.textOnPrimary, fontWeight: '800', fontSize: 17 },
+  barLabel: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" },
+  barTotal: { color: colors.textOnPrimary, fontWeight: "800", fontSize: 17 },
 });
