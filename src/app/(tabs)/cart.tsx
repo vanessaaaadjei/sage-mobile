@@ -4,11 +4,12 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
+import { ProductImage } from '../../components/ProductImage';
 import { QtyStepper } from '../../components/QtyStepper';
 import { Screen } from '../../components/Screen';
 import { formatMoney, TAX_RATE } from '../../core/cart';
 import { usePos } from '../../state/PosProvider';
-import { colors, radius, shadow, spacing, toneFor, typography } from '../../theme';
+import { colors, radius, shadow, spacing, typography } from '../../theme';
 
 export default function CartScreen() {
   const router = useRouter();
@@ -33,12 +34,9 @@ export default function CartScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const tone = toneFor(item.product.category);
             return (
               <View style={styles.row}>
-                <View style={[styles.monogram, { backgroundColor: tone.bg }]}>
-                  <Text style={[styles.monogramText, { color: tone.fg }]}>{item.product.name.slice(0, 2).toUpperCase()}</Text>
-                </View>
+                <ProductImage product={item.product} size={52} />
                 <View style={styles.rowText}>
                   <Text style={styles.name} numberOfLines={2}>
                     {item.product.name}
@@ -97,8 +95,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     ...shadow.card,
   },
-  monogram: { width: 44, height: 44, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  monogramText: { fontSize: 14, fontWeight: '800' },
   rowText: { flex: 1, gap: 2 },
   rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
   name: { ...typography.body, fontWeight: '700' },

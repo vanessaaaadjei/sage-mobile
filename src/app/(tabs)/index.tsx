@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ProductImage } from "../../components/ProductImage";
 import { QtyStepper } from "../../components/QtyStepper";
 import { Screen } from "../../components/Screen";
 import { formatMoney } from "../../core/cart";
@@ -22,7 +23,6 @@ import {
   radius,
   shadow,
   spacing,
-  toneFor,
   typography,
 } from "../../theme";
 
@@ -94,7 +94,6 @@ export default function CatalogScreen() {
     const remaining = stock - inCart;
     const soldOut = remaining <= 0 && inCart === 0;
     const low = !soldOut && remaining <= 5;
-    const tone = toneFor(item.category);
     const last = index === section.data.length - 1;
     return (
       <Pressable
@@ -108,11 +107,7 @@ export default function CatalogScreen() {
         disabled={soldOut || inCart > 0}
         onPress={() => addToCart(item)}
       >
-        <View style={[styles.monogram, { backgroundColor: tone.bg }]}>
-          <Text style={[styles.monogramText, { color: tone.fg }]}>
-            {item.name.slice(0, 2).toUpperCase()}
-          </Text>
-        </View>
+        <ProductImage product={item} size={56} />
         <View style={styles.rowText}>
           <Text style={styles.name} numberOfLines={1}>
             {item.name}
@@ -338,14 +333,6 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: colors.surfaceMuted },
   rowSoldOut: { opacity: 0.5 },
-  monogram: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monogramText: { fontSize: 14, fontWeight: "800" },
   rowText: { flex: 1, gap: 2 },
   name: { fontSize: 15, fontWeight: "700", color: colors.text },
   meta: typography.caption,

@@ -70,8 +70,8 @@ const EMPTY_SNAPSHOT: SyncSnapshot = { lastPulledAt: null, lastPushedAt: null, c
  */
 async function seedIfEmpty(store: PosStore) {
   const existing = await store.listProducts();
-  if (existing.length) return;
   await store.upsertProducts(SEED_PRODUCTS);
+  if (existing.length) return;
   await store.upsertCustomers(SEED_CUSTOMERS);
   await store.upsertVanStock(SEED_VAN_STOCK);
 }

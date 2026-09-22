@@ -94,6 +94,7 @@ export class SqliteStore implements PosStore {
         category TEXT NOT NULL,
         unit TEXT NOT NULL,
         price REAL NOT NULL,
+        image_url TEXT,
         updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS customers_cache (
@@ -136,6 +137,10 @@ export class SqliteStore implements PosStore {
         value TEXT
       );
     `);
+    const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(products_cache)');
+    if (!columns.some((column) => column.name === 'image_url')) {
+      await db.execAsync('ALTER TABLE products_cache ADD COLUMN image_url TEXT');
+    }
     this.db = db;
   }
 
@@ -144,20 +149,29 @@ export class SqliteStore implements PosStore {
     await db.withTransactionAsync(async () => {
       for (const product of products) {
         await db.runAsync(
-          `INSERT INTO products_cache (id, sku, name, category, unit, price, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO products_cache (id, sku, name, category, unit, price, image_url, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET sku = excluded.sku, name = excluded.name,
              category = excluded.category, unit = excluded.unit, price = excluded.price,
-             updated_at = excluded.updated_at`,
-          [product.id, product.sku, product.name, product.category, product.unit, product.price, product.updatedAt],
+             image_url = excluded.image_url, updated_at = excluded.updated_at`,
+          [
+            product.id,
+            product.sku,
+            product.name,
+            product.category,
+            product.unit,
+            product.price,
+            product.imageUrl ?? null,
+            product.updatedAt,
+          ],
         );
       }
     });
   }
 
   async listProducts() {
-    const rows = await this.database().getAllAsync<Product & { updated_at: string }>(
-      'SELECT id, sku, name, category, unit, price, updated_at FROM products_cache ORDER BY name',
+    const rows = await this.database().getAllAsync<Product & { image_url: string | null; updated_at: string }>(
+      'SELECT id, sku, name, category, unit, price, image_url, updated_at FROM products_cache ORDER BY name',
     );
     return rows.map((row) => ({
       id: row.id,
@@ -166,6 +180,7 @@ export class SqliteStore implements PosStore {
       category: row.category,
       unit: row.unit,
       price: row.price,
+      imageUrl: row.image_url ?? undefined,
       updatedAt: row.updated_at,
     }));
   }

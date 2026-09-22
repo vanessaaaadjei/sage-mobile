@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProductImage } from '../../components/ProductImage';
 import { Screen } from '../../components/Screen';
 import { usePos } from '../../state/PosProvider';
 import { colors, radius, shadow, spacing, toneFor, typography } from '../../theme';
@@ -54,9 +55,13 @@ export default function VanStockScreen() {
             const tone = toneFor(product?.category ?? name);
             return (
               <View style={styles.row}>
-                <View style={[styles.monogram, { backgroundColor: tone.bg }]}>
-                  <Text style={[styles.monogramText, { color: tone.fg }]}>{name.slice(0, 2).toUpperCase()}</Text>
-                </View>
+                {product ? (
+                  <ProductImage product={product} size={52} />
+                ) : (
+                  <View style={[styles.monogram, { backgroundColor: tone.bg }]}>
+                    <Text style={[styles.monogramText, { color: tone.fg }]}>{name.slice(0, 2).toUpperCase()}</Text>
+                  </View>
+                )}
                 <View style={styles.rowText}>
                   <View style={styles.rowTop}>
                     <Text style={styles.name} numberOfLines={1}>
