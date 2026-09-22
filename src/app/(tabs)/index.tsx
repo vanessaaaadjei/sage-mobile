@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { QtyStepper } from '../../components/QtyStepper';
@@ -17,9 +17,13 @@ export default function CatalogScreen() {
   const router = useRouter();
   const { products, addToCart, setCartQty, availableStock, cart, cartTotals, syncNow, rep, signOut } = usePos();
 
+  const [query, setQuery] = useState('');
+
   const sections = useMemo<Section[]>(() => {
+    const needle = query.trim().toLowerCase();
     const groups = new Map<string, Product[]>();
     for (const product of products) {
+      if (needle && !product.name.toLowerCase().includes(needle) && !product.sku.toLowerCase().includes(needle)) continue;
       const list = groups.get(product.category) ?? [];
       list.push(product);
       groups.set(product.category, list);
@@ -27,7 +31,7 @@ export default function CatalogScreen() {
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([title, data]) => ({ title, data: [...data].sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [products]);
+  }, [products, query]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
@@ -83,8 +87,27 @@ export default function CatalogScreen() {
           signOut();
           router.replace('/');
         }}>
+        <View style={styles.search}>
+          <Ionicons name="search" size={18} color={colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search products"
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Search catalog"
+            returnKeyType="search"
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery('')} accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+
         <SectionList
           sections={sections}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           renderSectionHeader={({ section }) => (
@@ -100,8 +123,10 @@ export default function CatalogScreen() {
               <View style={styles.emptyIcon}>
                 <Ionicons name="cube-outline" size={32} color={colors.primary} />
               </View>
-              <Text style={styles.emptyTitle}>No products yet</Text>
-              <Text style={styles.empty}>Your catalog will appear here after the first sync.</Text>
+              <Text style={styles.emptyTitle}>{query ? 'No matches' : 'No products yet'}</Text>
+              <Text style={styles.empty}>
+                {query ? `Nothing matches “${query}”.` : 'Your catalog will appear here after the first sync.'}
+              </Text>
             </View>
           }
         />
@@ -125,6 +150,18 @@ export default function CatalogScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  search: {
+    marginHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInput: { flex: 1, paddingVertical: spacing.md, fontSize: 15, color: colors.text },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl * 4, flexGrow: 1 },
   header: {
     flexDirection: 'row',
