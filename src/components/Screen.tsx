@@ -11,12 +11,18 @@ type Props = {
   children: ReactNode;
   onIndicatorPress?: () => void;
   onSignOut?: () => void;
+  onBack?: () => void;
 };
 
-export function Screen({ title, subtitle, children, onIndicatorPress, onSignOut }: Props) {
+export function Screen({ title, subtitle, children, onIndicatorPress, onSignOut, onBack }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        {onBack ? (
+          <Pressable onPress={onBack} accessibilityLabel="Back" style={styles.iconButton}>
+            <Ionicons name="arrow-back" size={20} color={colors.text} />
+          </Pressable>
+        ) : null}
         <View style={styles.headerText}>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           <Text style={styles.title}>{title}</Text>
@@ -46,7 +52,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
     gap: spacing.md,
   },
-  headerText: { flexShrink: 1, gap: 2 },
+  headerText: { flex: 1, gap: 2 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   iconButton: {
     width: 38,

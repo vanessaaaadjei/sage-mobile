@@ -2,9 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
+  FlatList,
   Pressable,
   ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -26,7 +26,7 @@ import {
   typography,
 } from "../../theme";
 
-type Section = { title: string; data: Product[] };
+type Category = { name: string; count: number; cover?: Product };
 
 export default function CatalogScreen() {
   const router = useRouter();
@@ -43,58 +43,78 @@ export default function CatalogScreen() {
   } = usePos();
 
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
+  const [category, setCategory] = useState<string | null>(null);
 
-  const categories = useMemo(
-    () => [
-      "All",
-      ...[...new Set(products.map((product) => product.category))].sort(
-        (a, b) => a.localeCompare(b),
-      ),
-    ],
-    [products],
-  );
-
-  const sections = useMemo<Section[]>(() => {
-    const needle = query.trim().toLowerCase();
+  const categories = useMemo<Category[]>(() => {
     const groups = new Map<string, Product[]>();
     for (const product of products) {
-      if (category !== "All" && product.category !== category) continue;
-      if (
-        needle &&
-        !product.name.toLowerCase().includes(needle) &&
-        !product.sku.toLowerCase().includes(needle)
-      )
-        continue;
       const list = groups.get(product.category) ?? [];
       list.push(product);
       groups.set(product.category, list);
     }
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([title, data]) => ({
-        title,
-        data: [...data].sort((a, b) => a.name.localeCompare(b.name)),
+      .map(([name, list]) => ({
+        name,
+        count: list.length,
+        cover: list.find((p) => p.imageUrl) ?? list[0],
       }));
-  }, [products, query, category]);
+  }, [products]);
+
+  const needle = query.trim().toLowerCase();
+  const browsing = category !== null || needle.length > 0;
+
+  const items = useMemo<Product[]>(() => {
+    if (!browsing) return [];
+    return products
+      .filter((product) => {
+        if (category !== null && product.category !== category) return false;
+        return (
+          !needle ||
+          product.name.toLowerCase().includes(needle) ||
+          product.sku.toLowerCase().includes(needle)
+        );
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, needle, category, browsing]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const renderItem = ({
-    item,
-    index,
-    section,
-  }: {
-    item: Product;
-    index: number;
-    section: Section;
-  }) => {
+  const goBack = () => {
+    setCategory(null);
+    setQuery("");
+  };
+
+  const renderCategory = ({ item }: { item: Category }) => (
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.rowPressed]}
+      onPress={() => setCategory(item.name)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}, ${item.count} products`}
+    >
+      {item.cover ? (
+        <ProductImage product={item.cover} size={64} />
+      ) : (
+        <View style={styles.cardIcon}>
+          <Ionicons name="cube-outline" size={28} color={colors.primary} />
+        </View>
+      )}
+      <Text style={styles.cardName} numberOfLines={2}>
+        {item.name}
+      </Text>
+      <Text style={styles.cardCount}>
+        {item.count} {item.count === 1 ? "item" : "items"}
+      </Text>
+    </Pressable>
+  );
+
+  const renderItem = ({ item, index }: { item: Product; index: number }) => {
     const stock = availableStock(item.id);
     const inCart = cart.find((line) => line.product.id === item.id)?.qty ?? 0;
     const remaining = stock - inCart;
     const soldOut = remaining <= 0 && inCart === 0;
     const low = !soldOut && remaining <= 5;
-    const last = index === section.data.length - 1;
+    const last = index === items.length - 1;
     return (
       <Pressable
         style={({ pressed }) => [
@@ -113,6 +133,7 @@ export default function CatalogScreen() {
             {item.name}
           </Text>
           <Text style={styles.meta}>
+            {category === null ? `${item.category} · ` : ""}
             {formatMoney(item.price)} / {item.unit}
             {soldOut ? " · Sold out" : low ? ` · ${remaining} left` : ""}
           </Text>
@@ -139,13 +160,22 @@ export default function CatalogScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Screen
-        title="Catalog"
-        subtitle={`Hi ${rep?.name.split(" ")[0] ?? ""} · Van ${rep?.vanCode ?? ""}`}
+        title={category ?? "Catalog"}
+        subtitle={
+          category
+            ? `${items.length} ${items.length === 1 ? "product" : "products"}`
+            : `Hi ${rep?.name.split(" ")[0] ?? ""} · Van ${rep?.vanCode ?? ""}`
+        }
+        onBack={category ? goBack : undefined}
         onIndicatorPress={syncNow}
-        onSignOut={() => {
-          signOut();
-          router.replace("/");
-        }}
+        onSignOut={
+          category
+            ? undefined
+            : () => {
+                signOut();
+                router.replace("/");
+              }
+        }
       >
         <View style={styles.search}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -153,7 +183,7 @@ export default function CatalogScreen() {
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search products"
+            placeholder={category ? `Search in ${category}` : "Search all products"}
             placeholderTextColor={colors.textMuted}
             accessibilityLabel="Search catalog"
             returnKeyType="search"
@@ -172,69 +202,58 @@ export default function CatalogScreen() {
           ) : null}
         </View>
 
-        <View style={styles.tabs}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
+        {browsing ? (
+          <FlatList
+            data={items}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.tabsContent}
-          >
-            {categories.map((name) => {
-              const active = name === category;
-              return (
-                <Pressable
-                  key={name}
-                  onPress={() => setCategory(name)}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  style={[styles.tab, active && styles.tabActive]}
-                >
-                  <Text
-                    style={[styles.tabText, active && styles.tabTextActive]}
-                  >
-                    {name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <SectionList
-          sections={sections}
-          keyboardShouldPersistTaps="handled"
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.header}>
-              <Text style={styles.headerText}>{section.title}</Text>
-              <Text style={styles.headerCount}>{section.data.length}</Text>
-            </View>
-          )}
-          stickySectionHeadersEnabled
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <View style={styles.emptyIcon}>
-                <Ionicons
-                  name="cube-outline"
-                  size={32}
-                  color={colors.primary}
-                />
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="search-outline"
+                    size={32}
+                    color={colors.primary}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>No matches</Text>
+                <Text style={styles.empty}>
+                  {needle
+                    ? `Nothing matches “${query.trim()}”${category ? ` in ${category}` : ""}.`
+                    : `No products in ${category}.`}
+                </Text>
               </View>
-              <Text style={styles.emptyTitle}>
-                {query || category !== "All" ? "No matches" : "No products yet"}
-              </Text>
-              <Text style={styles.empty}>
-                {query
-                  ? `Nothing matches “${query}”${category !== "All" ? ` in ${category}` : ""}.`
-                  : category !== "All"
-                    ? `No products in ${category}.`
-                    : "Your catalog will appear here after the first sync."}
-              </Text>
-            </View>
-          }
-        />
+            }
+          />
+        ) : (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.grid}
+          >
+            {categories.map((item) => (
+              <View key={item.name} style={styles.gridCell}>
+                {renderCategory({ item })}
+              </View>
+            ))}
+            {categories.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="cube-outline"
+                    size={32}
+                    color={colors.primary}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>No products yet</Text>
+                <Text style={styles.empty}>
+                  Your catalog will appear here after the first sync.
+                </Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
 
         {cartCount > 0 ? (
           <Pressable
@@ -283,38 +302,38 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl * 4,
     flexGrow: 1,
   },
-  tabs: { height: 52, flexShrink: 0, marginTop: spacing.sm },
-  tabsContent: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    alignItems: "center",
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: spacing.lg - spacing.sm / 2,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl * 4,
+    flexGrow: 1,
   },
-  tab: {
-    height: 36,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+  gridCell: { width: "50%", padding: spacing.sm / 2 },
+  card: {
     backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+    alignItems: "flex-start",
   },
-  tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { fontSize: 13, fontWeight: "700", color: colors.textMuted },
-  tabTextActive: { color: colors.textOnPrimary },
-  header: {
-    flexDirection: "row",
+  cardIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    backgroundColor: colors.background,
+    justifyContent: "center",
   },
-  headerText: typography.heading,
-  headerCount: { ...typography.caption, fontWeight: "700" },
+  cardName: { fontSize: 15, fontWeight: "700", color: colors.text },
+  cardCount: typography.caption,
   row: {
     flexDirection: "row",
     alignItems: "center",
