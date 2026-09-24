@@ -11,7 +11,7 @@ import { formatMoney, TAX_RATE } from '../core/cart';
 import type { Customer, Order, PaymentMethod } from '../core/types';
 import { InsufficientStockError } from '../db/store';
 import { usePos, type PendingCheckout } from '../state/PosProvider';
-import { colors, radius, shadow, spacing, toneFor, typography } from '../theme';
+import { colors, radius, spacing, toneFor, typography } from '../theme';
 
 const PAYMENTS: { key: PaymentMethod; label: string; icon: 'cash-outline' | 'phone-portrait-outline' | 'time-outline' }[] = [
   { key: 'cash', label: 'Cash', icon: 'cash-outline' },
@@ -70,7 +70,7 @@ export default function CheckoutScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.done}>
           <View style={styles.doneIcon}>
-            <Ionicons name="checkmark" size={40} color={colors.textOnPrimary} />
+            <Ionicons name="checkmark" size={28} color={colors.textOnPrimary} />
           </View>
           <Text style={styles.doneTitle}>Order complete</Text>
           <Text style={styles.doneBody}>
@@ -79,7 +79,7 @@ export default function CheckoutScreen() {
           <Text style={styles.doneMeta}>Stock has been updated. The order will be sent the next time you sync.</Text>
           <View style={styles.doneActions}>
             <Button label="Print receipt" icon="print-outline" onPress={async () => setReceipt(await printOrder(placed))} />
-            <Button label="Back to catalog" variant="secondary" onPress={() => router.replace('/(tabs)')} />
+            <Button label="Back to sell" variant="secondary" onPress={() => router.replace('/(tabs)')} />
           </View>
           <ReceiptModal payload={receipt} printerName={printer.name} onClose={() => setReceipt(null)} />
         </View>
@@ -208,21 +208,21 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xl },
   section: { ...typography.overline, marginTop: spacing.md, marginBottom: spacing.xs },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, overflow: 'hidden', ...shadow.card },
+  card: { backgroundColor: colors.surface, borderRadius: radius.sm, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   customer: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.md },
-  customerDivider: { borderTopWidth: 1, borderTopColor: colors.border },
+  customerDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   customerActive: { backgroundColor: colors.primarySoft },
-  avatar: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 16, fontWeight: '800' },
+  avatar: { width: 36, height: 36, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 13, fontWeight: '700' },
   customerText: { flex: 1, gap: 1 },
-  customerName: { fontSize: 15, fontWeight: '700', color: colors.text },
+  customerName: { fontSize: 14, fontWeight: '600', color: colors.text },
   customerMeta: typography.caption,
-  balance: { fontSize: 12, fontWeight: '700', color: colors.warning, marginTop: 2 },
+  balance: { fontSize: 11, fontWeight: '600', color: colors.warning, marginTop: 2 },
   paymentRow: { flexDirection: 'row', gap: spacing.sm },
   payment: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     paddingVertical: spacing.md,
     alignItems: 'center',
     gap: spacing.xs,
@@ -230,23 +230,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   paymentActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  paymentText: { fontWeight: '700', fontSize: 12, color: colors.textMuted },
+  paymentText: { fontWeight: '600', fontSize: 12, color: colors.textMuted },
   paymentTextActive: { color: colors.textOnPrimary },
   summary: { padding: spacing.md, gap: spacing.sm },
   line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
-  lineName: { fontSize: 14, color: colors.text, flex: 1 },
-  lineQty: { fontWeight: '700', color: colors.textMuted },
-  lineTotal: { fontSize: 14, fontWeight: '600', color: colors.text },
-  lineMuted: { fontSize: 13, color: colors.textMuted },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
-  grandLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
-  grandValue: { fontSize: 20, fontWeight: '800', color: colors.text },
+  lineName: { fontSize: 13, color: colors.text, flex: 1 },
+  lineQty: { fontWeight: '600', color: colors.textMuted },
+  lineTotal: { fontSize: 13, fontWeight: '600', color: colors.text },
+  lineMuted: { fontSize: 12, color: colors.textMuted },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.xs },
+  grandLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
+  grandValue: { fontSize: 17, fontWeight: '700', color: colors.text },
   errorBox: {
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center',
     backgroundColor: colors.dangerSoft,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     padding: spacing.md,
     marginTop: spacing.sm,
   },
@@ -256,23 +256,22 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.sm,
     backgroundColor: colors.surface,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
   footnote: { ...typography.caption, textAlign: 'center' },
   done: { flex: 1, padding: spacing.xl, justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
   doneIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: radius.pill,
+    width: 56,
+    height: 56,
+    borderRadius: radius.sm,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
-    ...shadow.floating,
   },
   doneTitle: typography.title,
-  doneBody: { fontSize: 16, color: colors.text, fontWeight: '600' },
+  doneBody: { fontSize: 15, color: colors.text, fontWeight: '600' },
   doneMeta: { ...typography.caption, textAlign: 'center', lineHeight: 20, maxWidth: 300 },
   doneActions: { alignSelf: 'stretch', gap: spacing.sm, marginTop: spacing.xl },
 });

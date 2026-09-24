@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,12 +10,12 @@ import { QtyStepper } from '../../components/QtyStepper';
 import { Screen } from '../../components/Screen';
 import { formatMoney, TAX_RATE } from '../../core/cart';
 import { usePos } from '../../state/PosProvider';
-import { colors, radius, shadow, spacing, typography } from '../../theme';
+import { colors, radius, spacing, typography } from '../../theme';
 
 export default function CartScreen() {
   const router = useRouter();
   const { cart, setCartQty, clearCart, cartTotals, availableStock } = usePos();
-  const count = cart.reduce((sum, item) => sum + item.qty, 0);
+  const count = useMemo(() => cart.reduce((sum, item) => sum + item.qty, 0), [cart]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -26,14 +27,15 @@ export default function CartScreen() {
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <View style={styles.emptyIcon}>
-                <Ionicons name="cart-outline" size={32} color={colors.primary} />
+                <Ionicons name="cart-outline" size={22} color={colors.textMuted} />
               </View>
               <Text style={styles.emptyTitle}>Your cart is empty</Text>
-              <Text style={styles.empty}>Tap a product in the catalog to add it.</Text>
-              <Button label="Browse catalog" variant="secondary" onPress={() => router.push('/(tabs)')} style={styles.emptyAction} />
+              <Text style={styles.empty}>Tap a product on Sell to add it.</Text>
+              <Button label="Back to sell" variant="secondary" onPress={() => router.push('/(tabs)')} style={styles.emptyAction} />
             </View>
           }
           renderItem={({ item }) => {
+            const stock = availableStock(item.product.id);
             return (
               <View style={styles.row}>
                 <ProductImage product={item.product} size={52} />
@@ -44,15 +46,14 @@ export default function CartScreen() {
                   <Text style={styles.meta}>
                     {formatMoney(item.product.price)} / {item.product.unit}
                   </Text>
-                  <View style={styles.rowBottom}>
-                    <QtyStepper
-                      value={item.qty}
-                      max={availableStock(item.product.id)}
-                      onChange={(qty) => setCartQty(item.product.id, qty)}
-                    />
-                    <Text style={styles.lineTotal}>{formatMoney(item.product.price * item.qty)}</Text>
-                  </View>
+                  <Text style={styles.lineTotal}>{formatMoney(item.product.price * item.qty)}</Text>
                 </View>
+                <QtyStepper
+                  value={item.qty}
+                  max={stock}
+                  unit={item.product.unit}
+                  onChange={(qty) => setCartQty(item.product.id, qty)}
+                />
               </View>
             );
           }}
@@ -86,40 +87,47 @@ export default function CartScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  list: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.lg, flexGrow: 1 },
+  list: { paddingHorizontal: spacing.lg, gap: 0, paddingBottom: spacing.lg, flexGrow: 1 },
   row: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    paddingVertical: spacing.md,
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.md,
-    ...shadow.card,
   },
-  rowText: { flex: 1, gap: 2 },
-  rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
-  name: { ...typography.body, fontWeight: '700' },
+  rowText: { flex: 1, gap: 2, paddingTop: 2 },
+  name: { fontSize: 14, fontWeight: '600', color: colors.text },
   meta: typography.caption,
-  lineTotal: { fontSize: 16, fontWeight: '800', color: colors.text },
+  lineTotal: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: spacing.sm },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingBottom: spacing.xxl },
-  emptyIcon: { width: 72, height: 72, borderRadius: radius.pill, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
-  emptyTitle: typography.heading,
-  empty: { textAlign: 'center', color: colors.textMuted },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: { ...typography.heading, fontWeight: '600' },
+  empty: { textAlign: 'center', color: colors.textMuted, fontSize: 13 },
   emptyAction: { marginTop: spacing.md },
   summary: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    padding: spacing.xl,
+    padding: spacing.lg,
     gap: spacing.sm,
-    ...shadow.floating,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  summaryLabel: { color: colors.textMuted, fontSize: 14 },
-  summaryValue: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
-  totalLabel: { fontSize: 17, fontWeight: '700', color: colors.text },
-  totalValue: { fontSize: 20, fontWeight: '800', color: colors.text },
+  summaryLabel: { color: colors.textMuted, fontSize: 13 },
+  summaryValue: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.xs },
+  totalLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
+  totalValue: { fontSize: 17, fontWeight: '700', color: colors.text },
   checkout: { marginTop: spacing.md },
   clearButton: { alignSelf: 'center', paddingVertical: spacing.sm },
-  clear: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  clear: { color: colors.textMuted, fontSize: 13, fontWeight: '500' },
 });

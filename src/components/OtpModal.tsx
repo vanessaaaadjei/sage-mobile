@@ -3,7 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 
 import { formatMoney } from '../core/cart';
 import type { PendingCheckout } from '../state/PosProvider';
-import { colors, radius, shadow, spacing, typography } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import { Button } from './Button';
 
 type Props = {
@@ -25,11 +25,20 @@ export function OtpModal({ checkout, busy, error, onVerify, onResend, onCancel }
         <View style={styles.card}>
           <Text style={styles.title}>Confirm delivery</Text>
           <Text style={styles.body}>
-            A 4-digit code was texted to {checkout.customer.name} ({checkout.customer.phone}). Ask them to read it back.
+            A 4-digit code was texted to {checkout.customer.name} ({checkout.customer.phone}). Ask them to
+            read it back.
           </Text>
           {checkout.smsReceipt?.channel === 'simulated' ? (
             <View style={styles.channel}>
               <Text style={styles.channelText}>Test mode · code is {checkout.otpPlain}</Text>
+            </View>
+          ) : null}
+          {checkout.smsReceipt?.channel === 'ios-composer' ? (
+            <View style={styles.channel}>
+              <Text style={styles.channelText}>
+                iOS opened Messages — tap Send on the sheet if it is still open. Code is {checkout.otpPlain}{' '}
+                if they did not receive it.
+              </Text>
             </View>
           ) : null}
 
@@ -66,7 +75,7 @@ export function OtpModal({ checkout, busy, error, onVerify, onResend, onCancel }
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(16, 24, 40, 0.55)',
+    backgroundColor: 'rgba(17, 24, 39, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
@@ -75,28 +84,31 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
+    borderRadius: radius.sm,
     padding: spacing.xl,
     gap: spacing.md,
-    ...shadow.floating,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  title: typography.title,
-  body: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
-  channel: { backgroundColor: colors.accentSoft, borderRadius: radius.sm, padding: spacing.md },
+  title: { fontSize: 17, fontWeight: '600', color: colors.text },
+  body: { fontSize: 13, color: colors.textMuted, lineHeight: 20 },
+  channel: { backgroundColor: colors.warningSoft, borderRadius: radius.sm, padding: spacing.md },
   channelText: { fontSize: 12, color: colors.warning, fontWeight: '600' },
   input: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     paddingVertical: spacing.lg,
-    fontSize: 34,
-    fontWeight: '700',
-    letterSpacing: 14,
+    fontSize: 28,
+    fontWeight: '600',
+    letterSpacing: 12,
     textAlign: 'center',
     color: colors.text,
   },
   error: { color: colors.danger, fontSize: 13 },
-  total: { fontSize: 14, fontWeight: '600', color: colors.textMuted, textAlign: 'center' },
+  total: { fontSize: 13, fontWeight: '500', color: colors.textMuted, textAlign: 'center' },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.xs },
-  link: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  link: { color: colors.primary, fontWeight: '600', fontSize: 13 },
   cancel: { color: colors.textMuted },
 });

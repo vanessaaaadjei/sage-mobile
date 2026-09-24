@@ -1,72 +1,107 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button } from '../../components/Button';
 import { ReceiptModal } from '../../components/ReceiptModal';
 import { Screen } from '../../components/Screen';
 import { formatMoney } from '../../core/cart';
 import type { Order, OrderStatus } from '../../core/types';
 import { usePos } from '../../state/PosProvider';
-import { colors, radius, shadow, spacing, typography } from '../../theme';
+import { colors, radius, spacing, typography } from '../../theme';
 
-const STATUS_STYLE: Record<OrderStatus, { bg: string; fg: string; label: string }> = {
-  pending: { bg: colors.warningSoft, fg: colors.warning, label: 'Waiting to sync' },
-  syncing: { bg: colors.infoSoft, fg: colors.info, label: 'Syncing' },
-  synced: { bg: colors.successSoft, fg: colors.success, label: 'Sent' },
-  failed: { bg: colors.dangerSoft, fg: colors.danger, label: 'Needs retry' },
+const STATUS: Record<OrderStatus, { fg: string; label: string }> = {
+  pending: { fg: colors.warning, label: 'Waiting to sync' },
+  syncing: { fg: colors.info, label: 'Syncing' },
+  synced: { fg: colors.success, label: 'Sent' },
+  failed: { fg: colors.danger, label: 'Needs retry' },
 };
 
-const PAYMENT_LABEL: Record<string, string> = { cash: 'Cash', momo: 'Mobile money', credit: 'Credit' };
+const PAYMENT: Record<string, string> = { cash: 'Cash', momo: 'Mobile money', credit: 'Credit' };
 
 function formatWhen(iso: string) {
   const date = new Date(iso);
-  return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+  return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · ${date.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
 }
 
 export default function OrdersScreen() {
   const { orders, syncNow, syncing, printOrder, printer, online, pendingCount } = usePos();
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const renderItem = ({ item }: { item: Order }) => {
-    const status = STATUS_STYLE[item.status];
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardTop}>
-          <View style={styles.cardTitle}>
-            <Text style={styles.customer} numberOfLines={1}>
-              {item.customerName}
-            </Text>
-            <Text style={styles.meta}>
-              {formatWhen(item.createdAt)} · {item.lines.length} item{item.lines.length === 1 ? '' : 's'} ·{' '}
-              {PAYMENT_LABEL[item.paymentMethod] ?? item.paymentMethod}
-            </Text>
+  const onPrint = useCallback(
+    async (order: Order) => {
+      setPrintingId(order.id);
+      try {
+        setReceipt(await printOrder(order));
+      } finally {
+        setPrintingId(null);
+      }
+    },
+    [printOrder],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Order }) => {
+      const status = STATUS[item.status];
+      return (
+        <View style={styles.row}>
+          <View style={styles.rowHeader}>
+            <View style={styles.rowTitle}>
+              <Text style={styles.customer} numberOfLines={1}>
+                {item.customerName}
+              </Text>
+              <Text style={styles.when}>{formatWhen(item.createdAt)}</Text>
+            </View>
+            <Text style={styles.total}>{formatMoney(item.total)}</Text>
           </View>
-          <View style={[styles.badge, { backgroundColor: status.bg }]}>
-            <Text style={[styles.badgeText, { color: status.fg }]}>{status.label}</Text>
+
+          <View style={styles.lines}>
+            {item.lines.map((line) => (
+              <Text key={`${item.id}-${line.productId}`} style={styles.line} numberOfLines={1}>
+                <Text style={styles.lineQty}>{line.qty}× </Text>
+                {line.name}
+              </Text>
+            ))}
           </View>
+
+          <View style={styles.rowFooter}>
+            <View style={styles.status}>
+              <View style={[styles.dot, { backgroundColor: status.fg }]} />
+              <Text style={[styles.statusText, { color: status.fg }]}>{status.label}</Text>
+              <Text style={styles.footerMeta}>
+                · {PAYMENT[item.paymentMethod] ?? item.paymentMethod}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => onPrint(item)}
+              disabled={printingId === item.id}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Print receipt"
+              style={({ pressed }) => [styles.printBtn, pressed && styles.pressed]}>
+              <Ionicons
+                name="print-outline"
+                size={18}
+                color={printingId === item.id ? colors.textMuted : colors.primary}
+              />
+              <Text style={[styles.printLabel, printingId === item.id && styles.printBusy]}>
+                {printingId === item.id ? 'Printing…' : 'Print'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {item.status === 'failed' ? (
+            <Text style={styles.error}>Will retry on the next sync.</Text>
+          ) : null}
         </View>
-        {item.status === 'failed' ? (
-          <Text style={styles.error}>Could not send this order yet. It will be retried on the next sync.</Text>
-        ) : null}
-        <View style={styles.cardBottom}>
-          <View>
-            <Text style={styles.docLabel}>{item.serverDocNo ? 'Receipt no.' : 'Local ref.'}</Text>
-            <Text style={styles.doc}>{item.serverDocNo ?? item.id.slice(0, 8).toUpperCase()}</Text>
-          </View>
-          <Text style={styles.total}>{formatMoney(item.total)}</Text>
-        </View>
-        <Button
-          label="Print receipt"
-          icon="print-outline"
-          variant="secondary"
-          compact
-          onPress={async () => setReceipt(await printOrder(item))}
-        />
-      </View>
-    );
-  };
+      );
+    },
+    [onPrint, printingId],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -76,33 +111,44 @@ export default function OrdersScreen() {
         onIndicatorPress={syncNow}>
         {pendingCount > 0 ? (
           <Pressable
-            style={[styles.syncCard, (syncing || !online) && styles.syncCardDisabled]}
+            style={[styles.syncBar, (syncing || !online) && styles.syncBarDisabled]}
             disabled={syncing || !online}
-            onPress={syncNow}>
-            <View style={styles.syncIcon}>
-              <Ionicons name={online ? 'cloud-upload-outline' : 'cloud-offline-outline'} size={20} color={colors.primary} />
-            </View>
-            <View style={styles.syncText}>
-              <Text style={styles.syncTitle}>{syncing ? 'Sending orders…' : online ? 'Send pending orders' : 'You are offline'}</Text>
-              <Text style={styles.syncSub}>
-                {online ? `${pendingCount} order${pendingCount === 1 ? '' : 's'} ready to send` : 'Orders will send when you reconnect'}
-              </Text>
-            </View>
-            {online && !syncing ? <Ionicons name="chevron-forward" size={18} color={colors.textMuted} /> : null}
+            onPress={syncNow}
+            accessibilityRole="button">
+            <Ionicons
+              name={online ? 'cloud-upload-outline' : 'cloud-offline-outline'}
+              size={18}
+              color={colors.textMuted}
+            />
+            <Text style={styles.syncBarText}>
+              {syncing
+                ? 'Sending…'
+                : online
+                  ? `Send ${pendingCount} pending order${pendingCount === 1 ? '' : 's'}`
+                  : 'Offline — will send when connected'}
+            </Text>
+            {online && !syncing ? (
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            ) : null}
           </Pressable>
         ) : null}
+
         <FlatList
           data={orders}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          ItemSeparatorComponent={Separator}
+          initialNumToRender={8}
+          windowSize={7}
+          removeClippedSubviews
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <View style={styles.emptyIcon}>
-                <Ionicons name="receipt-outline" size={32} color={colors.primary} />
+                <Ionicons name="receipt-outline" size={22} color={colors.textMuted} />
               </View>
               <Text style={styles.emptyTitle}>No orders yet</Text>
-              <Text style={styles.empty}>Orders you complete today will show up here.</Text>
+              <Text style={styles.empty}>Finish a sale from Sell → Cart to see it here.</Text>
             </View>
           }
         />
@@ -112,38 +158,65 @@ export default function OrdersScreen() {
   );
 }
 
+function Separator() {
+  return <View style={styles.separator} />;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  syncCard: {
+  syncBar: {
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.md - 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  syncCardDisabled: { opacity: 0.7 },
-  syncIcon: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  syncText: { flex: 1 },
-  syncTitle: { fontSize: 15, fontWeight: '700', color: colors.primaryDark },
-  syncSub: { fontSize: 12, color: colors.primaryDark, opacity: 0.8 },
-  list: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl, flexGrow: 1 },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, ...shadow.card },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
-  cardTitle: { flex: 1, gap: 2 },
-  customer: { fontSize: 16, fontWeight: '700', color: colors.text },
-  meta: typography.caption,
-  badge: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.pill },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-  error: { fontSize: 12, color: colors.danger, lineHeight: 17 },
-  cardBottom: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  docLabel: typography.overline,
-  doc: { fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 2 },
-  total: { fontSize: 20, fontWeight: '800', color: colors.text },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingBottom: spacing.xxl },
-  emptyIcon: { width: 72, height: 72, borderRadius: radius.pill, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
-  emptyTitle: typography.heading,
-  empty: { textAlign: 'center', color: colors.textMuted },
+  syncBarDisabled: { opacity: 0.65 },
+  syncBarText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, flexGrow: 1 },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  row: { paddingVertical: spacing.lg, gap: spacing.sm },
+  rowHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
+  rowTitle: { flex: 1, minWidth: 0, gap: 2 },
+  customer: { fontSize: 15, fontWeight: '600', color: colors.text },
+  when: typography.caption,
+  total: { fontSize: 15, fontWeight: '700', color: colors.text },
+  lines: { gap: 2 },
+  line: { fontSize: 13, color: colors.textMuted, lineHeight: 20 },
+  lineQty: { fontWeight: '600', color: colors.text },
+  rowFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  status: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  footerMeta: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
+  printBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 2 },
+  printLabel: { fontSize: 12, fontWeight: '600', color: colors.primary },
+  printBusy: { color: colors.textMuted },
+  pressed: { opacity: 0.6 },
+  error: { fontSize: 12, color: colors.danger },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.xxl,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: { ...typography.heading, fontWeight: '600' },
+  empty: { textAlign: 'center', color: colors.textMuted, paddingHorizontal: spacing.xl, fontSize: 13 },
 });

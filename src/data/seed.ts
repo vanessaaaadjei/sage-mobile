@@ -1,6 +1,7 @@
-import type { Customer, Product, VanStockLine } from '../core/types';
+import type { Customer, Order, Product, VanStockLine } from '../core/types';
 
 const NOW = '2026-01-05T06:00:00.000Z';
+const ORDER_AT = '2026-01-05T09:15:00.000Z';
 
 export const SEED_PRODUCTS: Product[] = [
   { id: 'P-1001', sku: 'BEV-CL-50', name: 'Cola 500ml', category: 'Beverages', unit: 'Crate', price: 62, imageUrl: `https://picsum.photos/seed/P-1001/200`, updatedAt: NOW },
@@ -22,6 +23,7 @@ export const SEED_CUSTOMERS: Customer[] = [
   { id: 'C-505', code: 'CUS-505', name: 'Efua Corner Shop', phone: '+233201234505', route: 'Kasoa', balance: 62, updatedAt: NOW },
 ];
 
+/** Morning load — on-hand is before the seeded order is committed. */
 export const SEED_VAN_STOCK: VanStockLine[] = [
   { productId: 'P-1001', qtyLoaded: 40, qtyOnHand: 40, updatedAt: NOW },
   { productId: 'P-1002', qtyLoaded: 30, qtyOnHand: 30, updatedAt: NOW },
@@ -33,3 +35,49 @@ export const SEED_VAN_STOCK: VanStockLine[] = [
   { productId: 'P-4001', qtyLoaded: 35, qtyOnHand: 35, updatedAt: NOW },
   { productId: 'P-4002', qtyLoaded: 12, qtyOnHand: 12, updatedAt: NOW },
 ];
+
+/** Demo sale waiting to sync to Sage — 2× Cola + 1× Biscuits for Adom Mini Mart. */
+export const SEED_ORDER_DEDUCTIONS: Record<string, number> = {
+  'P-1001': 2,
+  'P-2001': 1,
+};
+
+export const SEED_ORDER: Order = {
+  id: 'ord-seed-adom-001',
+  idempotencyKey: 'ord-seed-adom-001:253',
+  customerId: 'C-501',
+  customerName: 'Adom Mini Mart',
+  customerPhone: '+233201234501',
+  lines: [
+    {
+      productId: 'P-1001',
+      sku: 'BEV-CL-50',
+      name: 'Cola 500ml',
+      unit: 'Crate',
+      qty: 2,
+      unitPrice: 62,
+      lineTotal: 124,
+    },
+    {
+      productId: 'P-2001',
+      sku: 'SNK-BIS-20',
+      name: 'Cream Biscuits 20g',
+      unit: 'Carton',
+      qty: 1,
+      unitPrice: 96,
+      lineTotal: 96,
+    },
+  ],
+  subtotal: 220,
+  tax: 33,
+  total: 253,
+  paymentMethod: 'cash',
+  otpHash: 'seed-otp-hash',
+  otpVerifiedAt: ORDER_AT,
+  status: 'pending',
+  attempts: 0,
+  lastError: null,
+  createdAt: ORDER_AT,
+  syncedAt: null,
+  serverDocNo: null,
+};
