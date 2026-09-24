@@ -94,6 +94,7 @@ export class SqliteStore implements PosStore {
         category TEXT NOT NULL,
         unit TEXT NOT NULL,
         price REAL NOT NULL,
+        image_url TEXT,
         updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS customers_cache (
@@ -136,6 +137,10 @@ export class SqliteStore implements PosStore {
         value TEXT
       );
     `);
+    const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(products_cache)');
+    if (!columns.some((column) => column.name === 'image_url')) {
+      await db.execAsync('ALTER TABLE products_cache ADD COLUMN image_url TEXT');
+    }
     this.db = db;
   }
 
@@ -144,20 +149,59 @@ export class SqliteStore implements PosStore {
     await db.withTransactionAsync(async () => {
       for (const product of products) {
         await db.runAsync(
-          `INSERT INTO products_cache (id, sku, name, category, unit, price, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO products_cache (id, sku, name, category, unit, price, image_url, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET sku = excluded.sku, name = excluded.name,
              category = excluded.category, unit = excluded.unit, price = excluded.price,
-             updated_at = excluded.updated_at`,
-          [product.id, product.sku, product.name, product.category, product.unit, product.price, product.updatedAt],
+             image_url = excluded.image_url, updated_at = excluded.updated_at`,
+          [
+            product.id,
+            product.sku,
+            product.name,
+            product.category,
+            product.unit,
+            product.price,
+            product.imageUrl ?? null,
+            product.updatedAt,
+          ],
+        );
+      }
+    });
+  }
+
+  async replaceProducts(products: Product[]) {
+    const db = this.database();
+    const CHUNK = 80;
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.execAsync('DELETE FROM products_cache');
+      for (let offset = 0; offset < products.length; offset += CHUNK) {
+        const chunk = products.slice(offset, offset + CHUNK);
+        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+        const values: (string | number | null)[] = [];
+        for (const product of chunk) {
+          values.push(
+            product.id,
+            product.sku,
+            product.name,
+            product.category,
+            product.unit,
+            product.price,
+            product.imageUrl ?? null,
+            product.updatedAt,
+          );
+        }
+        await txn.runAsync(
+          `INSERT INTO products_cache (id, sku, name, category, unit, price, image_url, updated_at)
+           VALUES ${placeholders}`,
+          values,
         );
       }
     });
   }
 
   async listProducts() {
-    const rows = await this.database().getAllAsync<Product & { updated_at: string }>(
-      'SELECT id, sku, name, category, unit, price, updated_at FROM products_cache ORDER BY name',
+    const rows = await this.database().getAllAsync<Product & { image_url: string | null; updated_at: string }>(
+      'SELECT id, sku, name, category, unit, price, image_url, updated_at FROM products_cache ORDER BY name',
     );
     return rows.map((row) => ({
       id: row.id,
@@ -166,6 +210,7 @@ export class SqliteStore implements PosStore {
       category: row.category,
       unit: row.unit,
       price: row.price,
+      imageUrl: row.image_url ?? undefined,
       updatedAt: row.updated_at,
     }));
   }
@@ -231,6 +276,35 @@ export class SqliteStore implements PosStore {
     }));
   }
 
+  async pruneOrphanVanStock(validProductIds: string[]) {
+    const db = this.database();
+    if (!validProductIds.length) {
+      await db.execAsync('DELETE FROM van_stock_cache');
+      return;
+    }
+    const placeholders = validProductIds.map(() => '?').join(',');
+    await db.runAsync(`DELETE FROM van_stock_cache WHERE product_id NOT IN (${placeholders})`, validProductIds);
+  }
+
+  async applyVanLoad(loads: Record<string, number>) {
+    const db = this.database();
+    const now = new Date().toISOString();
+    await db.withTransactionAsync(async () => {
+      for (const [productId, qty] of Object.entries(loads)) {
+        if (!qty || qty <= 0) continue;
+        await db.runAsync(
+          `INSERT INTO van_stock_cache (product_id, qty_loaded, qty_on_hand, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(product_id) DO UPDATE SET
+             qty_loaded = qty_loaded + excluded.qty_loaded,
+             qty_on_hand = qty_on_hand + excluded.qty_on_hand,
+             updated_at = excluded.updated_at`,
+          [productId, qty, qty, now],
+        );
+      }
+    });
+  }
+
   async commitOrder(order: Order, deductions: Record<string, number>) {
     const db = this.database();
     await db.withTransactionAsync(async () => {
@@ -241,34 +315,42 @@ export class SqliteStore implements PosStore {
         );
         if (result.changes === 0) throw new InsufficientStockError(productId);
       }
-      await db.runAsync(
-        `INSERT INTO offline_orders_outbox (id, idempotency_key, customer_id, customer_name, customer_phone,
-           lines, subtotal, tax, total, payment_method, otp_hash, otp_verified_at, status, attempts,
-           last_error, created_at, synced_at, server_doc_no)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(idempotency_key) DO NOTHING`,
-        [
-          order.id,
-          order.idempotencyKey,
-          order.customerId,
-          order.customerName,
-          order.customerPhone,
-          JSON.stringify(order.lines),
-          order.subtotal,
-          order.tax,
-          order.total,
-          order.paymentMethod,
-          order.otpHash,
-          order.otpVerifiedAt,
-          order.status,
-          order.attempts,
-          order.lastError,
-          order.createdAt,
-          order.syncedAt,
-          order.serverDocNo,
-        ],
-      );
+      await this.insertOrderRow(order);
     });
+  }
+
+  async enqueueOrder(order: Order) {
+    await this.insertOrderRow(order);
+  }
+
+  private async insertOrderRow(order: Order) {
+    await this.database().runAsync(
+      `INSERT INTO offline_orders_outbox (id, idempotency_key, customer_id, customer_name, customer_phone,
+         lines, subtotal, tax, total, payment_method, otp_hash, otp_verified_at, status, attempts,
+         last_error, created_at, synced_at, server_doc_no)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(idempotency_key) DO NOTHING`,
+      [
+        order.id,
+        order.idempotencyKey,
+        order.customerId,
+        order.customerName,
+        order.customerPhone,
+        JSON.stringify(order.lines),
+        order.subtotal,
+        order.tax,
+        order.total,
+        order.paymentMethod,
+        order.otpHash,
+        order.otpVerifiedAt,
+        order.status,
+        order.attempts,
+        order.lastError,
+        order.createdAt,
+        order.syncedAt,
+        order.serverDocNo,
+      ],
+    );
   }
 
   async listOrders() {
@@ -295,6 +377,7 @@ export class SqliteStore implements PosStore {
       lastPulledAt: meta.lastPulledAt ?? null,
       lastPushedAt: meta.lastPushedAt ?? null,
       cursor: meta.cursor ?? null,
+      catalogPulledAt: meta.catalogPulledAt ?? null,
     };
   }
 

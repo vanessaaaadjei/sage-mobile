@@ -1,11 +1,12 @@
+import Constants from 'expo-constants';
+
 import type { Customer, Order, Product, VanStockLine } from '../core/types';
 
 /**
- * Client contract for the sync endpoints. No backend ships with this app: the
- * methods below are unimplemented hooks. Point them at the real service by
- * replacing the bodies with `fetch` calls — the rest of the app already speaks
- * this shape (bearer token, delta cursor, batched pushes keyed by idempotency
- * key) and needs no other change.
+ * Client for the Laravel sync endpoints in the architecture diagram.
+ * Set EXPO_PUBLIC_SYNC_API_URL (e.g. https://api.example.com/api/v1) to enable.
+ * Until that URL is set, methods throw SyncNotConfiguredError so offline POS
+ * still runs without a backend.
  */
 
 export type DeltaResponse = {
@@ -32,9 +33,17 @@ export class OfflineError extends Error {
 
 export class SyncNotConfiguredError extends Error {
   constructor(endpoint: string) {
-    super(`${endpoint} is not wired up — implement it in src/services/syncApi.ts`);
+    super(`${endpoint} is not wired up — set EXPO_PUBLIC_SYNC_API_URL when the backend is ready`);
     this.name = 'SyncNotConfiguredError';
   }
+}
+
+function configuredBaseUrl(): string | null {
+  const fromEnv = process.env.EXPO_PUBLIC_SYNC_API_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  const fromExtra = Constants.expoConfig?.extra?.syncApiUrl;
+  if (typeof fromExtra === 'string' && fromExtra.trim()) return fromExtra.trim().replace(/\/$/, '');
+  return null;
 }
 
 export class SyncApi {
@@ -61,21 +70,55 @@ export class SyncApi {
     if (!this.online) throw new OfflineError();
   }
 
-  /** POST /auth/token */
-  async login(_username: string, _pin: string): Promise<string> {
+  private requireBaseUrl(endpoint: string): string {
+    const base = configuredBaseUrl();
+    if (!base) throw new SyncNotConfiguredError(endpoint);
+    return base;
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     this.assertOnline();
-    throw new SyncNotConfiguredError('Sign-in endpoint');
+    const base = this.requireBaseUrl(path);
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(init.headers as Record<string, string> | undefined),
+    };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+
+    const response = await fetch(`${base}${path}`, { ...init, headers });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Sync request failed (${response.status})`);
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  }
+
+  /** POST /auth/token */
+  async login(username: string, pin: string): Promise<string> {
+    const data = await this.request<{ token: string }>('/auth/token', {
+      method: 'POST',
+      body: JSON.stringify({ username, pin }),
+    });
+    this.token = data.token;
+    return data.token;
   }
 
   /** GET /sync/delta?since=<cursor> */
-  async pullDelta(_cursor: string | null): Promise<DeltaResponse> {
-    this.assertOnline();
-    throw new SyncNotConfiguredError('Catalogue delta endpoint');
+  async pullDelta(cursor: string | null): Promise<DeltaResponse> {
+    const query = cursor ? `?since=${encodeURIComponent(cursor)}` : '';
+    return this.request<DeltaResponse>(`/sync/delta${query}`);
   }
 
   /** POST /sync/orders — batch push, deduplicated on Idempotency-Key. */
-  async pushOrders(_orders: Order[]): Promise<PushResult[]> {
-    this.assertOnline();
-    throw new SyncNotConfiguredError('Order push endpoint');
+  async pushOrders(orders: Order[]): Promise<PushResult[]> {
+    return this.request<PushResult[]>('/sync/orders', {
+      method: 'POST',
+      body: JSON.stringify({ orders }),
+      headers: {
+        'Idempotency-Key': orders.map((order) => order.idempotencyKey).join(','),
+      },
+    });
   }
 }

@@ -5,6 +5,7 @@ export type Product = {
   category: string;
   unit: string;
   price: number;
+  imageUrl?: string;
   updatedAt: string;
 };
 
@@ -64,6 +65,8 @@ export type SyncSnapshot = {
   lastPulledAt: string | null;
   lastPushedAt: string | null;
   cursor: string | null;
+  /** ISO time of last successful ECL catalog pull. */
+  catalogPulledAt: string | null;
 };
 
 export type Rep = {

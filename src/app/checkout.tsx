@@ -1,20 +1,22 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../components/Button';
 import { OtpModal } from '../components/OtpModal';
 import { ReceiptModal } from '../components/ReceiptModal';
 import { formatMoney, TAX_RATE } from '../core/cart';
 import type { Customer, Order, PaymentMethod } from '../core/types';
 import { InsufficientStockError } from '../db/store';
 import { usePos, type PendingCheckout } from '../state/PosProvider';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, spacing, toneFor, typography } from '../theme';
 
-const PAYMENTS: { key: PaymentMethod; label: string }[] = [
-  { key: 'cash', label: 'Cash' },
-  { key: 'momo', label: 'Mobile money' },
-  { key: 'credit', label: 'Credit' },
+const PAYMENTS: { key: PaymentMethod; label: string; icon: 'cash-outline' | 'phone-portrait-outline' | 'time-outline' }[] = [
+  { key: 'cash', label: 'Cash', icon: 'cash-outline' },
+  { key: 'momo', label: 'Mobile money', icon: 'phone-portrait-outline' },
+  { key: 'credit', label: 'Credit', icon: 'time-outline' },
 ];
 
 export default function CheckoutScreen() {
@@ -67,70 +69,93 @@ export default function CheckoutScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.done}>
-          <Text style={styles.doneTitle}>Order captured</Text>
+          <View style={styles.doneIcon}>
+            <Ionicons name="checkmark" size={28} color={colors.textOnPrimary} />
+          </View>
+          <Text style={styles.doneTitle}>Order complete</Text>
           <Text style={styles.doneBody}>
             {placed.customerName} · {formatMoney(placed.total)}
           </Text>
-          <Text style={styles.doneMeta}>
-            Stock is deducted and the order sits in the encrypted outbox until it is pushed.
-          </Text>
-          <Pressable style={styles.primary} onPress={async () => setReceipt(await printOrder(placed))}>
-            <Text style={styles.primaryText}>Print receipt</Text>
-          </Pressable>
-          <Pressable style={styles.secondary} onPress={() => router.replace('/(tabs)/orders')}>
-            <Text style={styles.secondaryText}>View outbox</Text>
-          </Pressable>
+          <Text style={styles.doneMeta}>Stock has been updated. The order will be sent the next time you sync.</Text>
+          <View style={styles.doneActions}>
+            <Button label="Print receipt" icon="print-outline" onPress={async () => setReceipt(await printOrder(placed))} />
+            <Button label="Back to sell" variant="secondary" onPress={() => router.replace('/(tabs)')} />
+          </View>
           <ReceiptModal payload={receipt} printerName={printer.name} onClose={() => setReceipt(null)} />
         </View>
       </SafeAreaView>
     );
   }
 
+  const canSubmit = Boolean(customer) && !busy && cart.length > 0;
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.section}>Customer</Text>
         <View style={styles.card}>
-          {customers.map((entry) => (
-            <Pressable
-              key={entry.id}
-              style={[styles.customer, customer?.id === entry.id && styles.customerActive]}
-              onPress={() => setCustomer(entry)}>
-              <View style={styles.customerText}>
-                <Text style={styles.customerName}>{entry.name}</Text>
-                <Text style={styles.customerMeta}>
-                  {entry.code} · {entry.route} · {entry.phone}
-                </Text>
-              </View>
-              {entry.balance > 0 ? <Text style={styles.balance}>Owes {formatMoney(entry.balance)}</Text> : null}
-            </Pressable>
-          ))}
+          {customers.map((entry, index) => {
+            const active = customer?.id === entry.id;
+            const tone = toneFor(entry.name);
+            return (
+              <Pressable
+                key={entry.id}
+                style={[styles.customer, active && styles.customerActive, index > 0 && styles.customerDivider]}
+                onPress={() => setCustomer(entry)}>
+                <View style={[styles.avatar, { backgroundColor: tone.bg }]}>
+                  <Text style={[styles.avatarText, { color: tone.fg }]}>{entry.name.slice(0, 1).toUpperCase()}</Text>
+                </View>
+                <View style={styles.customerText}>
+                  <Text style={styles.customerName}>{entry.name}</Text>
+                  <Text style={styles.customerMeta}>
+                    {entry.route} · {entry.phone}
+                  </Text>
+                  {entry.balance > 0 ? <Text style={styles.balance}>Owes {formatMoney(entry.balance)}</Text> : null}
+                </View>
+                <Ionicons
+                  name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={22}
+                  color={active ? colors.primary : colors.border}
+                />
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.section}>Payment</Text>
         <View style={styles.paymentRow}>
-          {PAYMENTS.map((entry) => (
-            <Pressable
-              key={entry.key}
-              style={[styles.payment, payment === entry.key && styles.paymentActive]}
-              onPress={() => setPayment(entry.key)}>
-              <Text style={[styles.paymentText, payment === entry.key && styles.paymentTextActive]}>{entry.label}</Text>
-            </Pressable>
-          ))}
+          {PAYMENTS.map((entry) => {
+            const active = payment === entry.key;
+            return (
+              <Pressable
+                key={entry.key}
+                style={[styles.payment, active && styles.paymentActive]}
+                onPress={() => setPayment(entry.key)}>
+                <Ionicons name={entry.icon} size={20} color={active ? colors.textOnPrimary : colors.textMuted} />
+                <Text style={[styles.paymentText, active && styles.paymentTextActive]}>{entry.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <Text style={styles.section}>Order</Text>
-        <View style={styles.card}>
+        <Text style={styles.section}>Order summary</Text>
+        <View style={[styles.card, styles.summary]}>
           {cart.map((item) => (
             <View key={item.product.id} style={styles.line}>
-              <Text style={styles.lineName}>
-                {item.qty} × {item.product.name}
+              <Text style={styles.lineName} numberOfLines={1}>
+                <Text style={styles.lineQty}>{item.qty} × </Text>
+                {item.product.name}
               </Text>
               <Text style={styles.lineTotal}>{formatMoney(item.product.price * item.qty)}</Text>
             </View>
           ))}
+          <View style={styles.divider} />
           <View style={styles.line}>
-            <Text style={styles.lineMuted}>VAT/Levies ({Math.round(TAX_RATE * 100)}%)</Text>
+            <Text style={styles.lineMuted}>Subtotal</Text>
+            <Text style={styles.lineMuted}>{formatMoney(cartTotals.subtotal)}</Text>
+          </View>
+          <View style={styles.line}>
+            <Text style={styles.lineMuted}>VAT & levies ({Math.round(TAX_RATE * 100)}%)</Text>
             <Text style={styles.lineMuted}>{formatMoney(cartTotals.tax)}</Text>
           </View>
           <View style={styles.line}>
@@ -139,15 +164,25 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Pressable style={[styles.primary, (!customer || busy || !cart.length) && styles.disabled]} disabled={!customer || busy || !cart.length} onPress={begin}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Send OTP & confirm delivery</Text>}
-        </Pressable>
-        <Text style={styles.footnote}>
-          The code is sent over the SIM&apos;s GSM channel, so it reaches basic handsets with no data connection.
-        </Text>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle" size={18} color={colors.danger} />
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : null}
       </ScrollView>
+
+      <View style={styles.footer}>
+        {!customer ? <Text style={styles.footnote}>Select a customer to continue.</Text> : null}
+        <Button
+          label={customer ? `Confirm with ${customer.name.split(' ')[0]}` : 'Confirm delivery'}
+          icon="chatbubble-ellipses-outline"
+          onPress={begin}
+          loading={busy}
+          disabled={!canSubmit}
+        />
+        <Text style={styles.footnote}>A confirmation code is sent to the customer&apos;s phone by SMS.</Text>
+      </View>
 
       <OtpModal
         checkout={checkout}
@@ -172,41 +207,71 @@ export default function CheckoutScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xl },
-  section: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginTop: spacing.md, textTransform: 'uppercase' },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.sm, gap: spacing.xs },
-  customer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    gap: spacing.md,
-  },
-  customerActive: { backgroundColor: colors.infoSoft },
-  customerText: { flexShrink: 1 },
-  customerName: { fontSize: 15, fontWeight: '700', color: colors.text },
-  customerMeta: { fontSize: 12, color: colors.textMuted },
-  balance: { fontSize: 12, fontWeight: '700', color: colors.warning },
+  section: { ...typography.overline, marginTop: spacing.md, marginBottom: spacing.xs },
+  card: { backgroundColor: colors.surface, borderRadius: radius.sm, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  customer: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.md },
+  customerDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  customerActive: { backgroundColor: colors.primarySoft },
+  avatar: { width: 36, height: 36, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 13, fontWeight: '700' },
+  customerText: { flex: 1, gap: 1 },
+  customerName: { fontSize: 14, fontWeight: '600', color: colors.text },
+  customerMeta: typography.caption,
+  balance: { fontSize: 11, fontWeight: '600', color: colors.warning, marginTop: 2 },
   paymentRow: { flexDirection: 'row', gap: spacing.sm },
-  payment: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  paymentActive: { backgroundColor: colors.primary },
-  paymentText: { fontWeight: '700', color: colors.textMuted },
-  paymentTextActive: { color: '#fff' },
-  line: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  lineName: { fontSize: 14, color: colors.text, flexShrink: 1 },
-  lineTotal: { fontSize: 14, fontWeight: '600', color: colors.text },
-  lineMuted: { fontSize: 13, color: colors.textMuted },
-  grandLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
-  grandValue: { fontSize: 16, fontWeight: '800', color: colors.text },
-  error: { color: colors.danger, fontSize: 13, marginTop: spacing.sm },
-  primary: { marginTop: spacing.lg, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing.md + 2, alignItems: 'center' },
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  disabled: { opacity: 0.5 },
-  secondary: { marginTop: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  secondaryText: { color: colors.text, fontWeight: '700' },
-  footnote: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md, lineHeight: 18 },
-  done: { flex: 1, padding: spacing.xl, justifyContent: 'center', gap: spacing.sm },
-  doneTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
-  doneBody: { fontSize: 16, color: colors.text },
-  doneMeta: { fontSize: 13, color: colors.textMuted, lineHeight: 20 },
+  payment: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  paymentActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  paymentText: { fontWeight: '600', fontSize: 12, color: colors.textMuted },
+  paymentTextActive: { color: colors.textOnPrimary },
+  summary: { padding: spacing.md, gap: spacing.sm },
+  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
+  lineName: { fontSize: 13, color: colors.text, flex: 1 },
+  lineQty: { fontWeight: '600', color: colors.textMuted },
+  lineTotal: { fontSize: 13, fontWeight: '600', color: colors.text },
+  lineMuted: { fontSize: 12, color: colors.textMuted },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.xs },
+  grandLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
+  grandValue: { fontSize: 17, fontWeight: '700', color: colors.text },
+  errorBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  error: { color: colors.danger, fontSize: 13, flex: 1 },
+  footer: {
+    padding: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  footnote: { ...typography.caption, textAlign: 'center' },
+  done: { flex: 1, padding: spacing.xl, justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
+  doneIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  doneTitle: typography.title,
+  doneBody: { fontSize: 15, color: colors.text, fontWeight: '600' },
+  doneMeta: { ...typography.caption, textAlign: 'center', lineHeight: 20, maxWidth: 300 },
+  doneActions: { alignSelf: 'stretch', gap: spacing.sm, marginTop: spacing.xl },
 });

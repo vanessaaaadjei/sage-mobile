@@ -9,6 +9,8 @@ export type PosStore = {
   backend(): string;
 
   upsertProducts(products: Product[]): Promise<void>;
+  /** Clears the local product cache and writes the given rows (full catalog refresh). */
+  replaceProducts(products: Product[]): Promise<void>;
   listProducts(): Promise<Product[]>;
 
   upsertCustomers(customers: Customer[]): Promise<void>;
@@ -16,8 +18,14 @@ export type PosStore = {
 
   upsertVanStock(lines: VanStockLine[]): Promise<void>;
   listVanStock(): Promise<VanStockLine[]>;
+  /** Drops stock rows whose product is no longer in the catalog. */
+  pruneOrphanVanStock(validProductIds: string[]): Promise<void>;
+  /** Adds units onto the van (increases both loaded and on-hand). */
+  applyVanLoad(loads: Record<string, number>): Promise<void>;
   /** Atomically deducts sold quantities and appends the order to the outbox. */
   commitOrder(order: Order, deductions: Record<string, number>): Promise<void>;
+  /** Appends an order to the outbox without changing van stock (demo / recovery). */
+  enqueueOrder(order: Order): Promise<void>;
 
   listOrders(): Promise<Order[]>;
   updateOrder(order: Order): Promise<void>;

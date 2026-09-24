@@ -1,7 +1,7 @@
 import type { Customer, Order, Product, SyncSnapshot, VanStockLine } from '../core/types';
 import { InsufficientStockError, type PosStore } from './store';
 
-const STORAGE_KEY = 'vanpos.web.cache.v1';
+const STORAGE_KEY = 'vanpos.web.cache.v2';
 
 type Snapshot = {
   products: Product[];
@@ -16,7 +16,7 @@ const emptySnapshot = (): Snapshot => ({
   customers: [],
   vanStock: [],
   orders: [],
-  sync: { lastPulledAt: null, lastPushedAt: null, cursor: null },
+  sync: { lastPulledAt: null, lastPushedAt: null, cursor: null, catalogPulledAt: null },
 });
 
 /**
@@ -60,6 +60,11 @@ export class MemoryStore implements PosStore {
     this.persist();
   }
 
+  async replaceProducts(products: Product[]) {
+    this.data.products = [...products].sort((a, b) => a.name.localeCompare(b.name));
+    this.persist();
+  }
+
   async listProducts() {
     return [...this.data.products];
   }
@@ -84,6 +89,30 @@ export class MemoryStore implements PosStore {
     return [...this.data.vanStock];
   }
 
+  async pruneOrphanVanStock(validProductIds: string[]) {
+    const valid = new Set(validProductIds);
+    this.data.vanStock = this.data.vanStock.filter((line) => valid.has(line.productId));
+    this.persist();
+  }
+
+  async applyVanLoad(loads: Record<string, number>) {
+    const now = new Date().toISOString();
+    const next = this.data.vanStock.map((line) => ({ ...line }));
+    for (const [productId, qty] of Object.entries(loads)) {
+      if (!qty || qty <= 0) continue;
+      const existing = next.find((row) => row.productId === productId);
+      if (existing) {
+        existing.qtyLoaded += qty;
+        existing.qtyOnHand += qty;
+        existing.updatedAt = now;
+      } else {
+        next.push({ productId, qtyLoaded: qty, qtyOnHand: qty, updatedAt: now });
+      }
+    }
+    this.data.vanStock = next;
+    this.persist();
+  }
+
   async commitOrder(order: Order, deductions: Record<string, number>) {
     const next = this.data.vanStock.map((line) => ({ ...line }));
     for (const [productId, qty] of Object.entries(deductions)) {
@@ -94,6 +123,12 @@ export class MemoryStore implements PosStore {
     }
     if (this.data.orders.some((row) => row.idempotencyKey === order.idempotencyKey)) return;
     this.data.vanStock = next;
+    this.data.orders = [order, ...this.data.orders];
+    this.persist();
+  }
+
+  async enqueueOrder(order: Order) {
+    if (this.data.orders.some((row) => row.idempotencyKey === order.idempotencyKey)) return;
     this.data.orders = [order, ...this.data.orders];
     this.persist();
   }

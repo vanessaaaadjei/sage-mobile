@@ -1,16 +1,17 @@
 import * as Crypto from 'expo-crypto';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { round, TAX_RATE, toOrderLines, totals, type CartItem } from '../core/cart';
 import { generateOtp, hashOtp, verifyOtp } from '../core/otp';
 import { SyncEngine, type SyncOutcome } from '../core/syncEngine';
 import type { Customer, Order, PaymentMethod, Product, Rep, SyncSnapshot, VanStockLine } from '../core/types';
-import { SEED_CUSTOMERS, SEED_PRODUCTS, SEED_VAN_STOCK } from '../data/seed';
+import { SEED_CUSTOMERS } from '../data/seed';
 import { getStore } from '../db';
 import { InsufficientStockError, type PosStore } from '../db/store';
+import { fetchCatalogProducts, isCatalogFresh } from '../services/catalogApi';
 import { DEFAULT_PRINTER, printReceipt, renderReceipt, type BluetoothPrinter } from '../services/printer';
 import { sendOtpSms, type SmsReceipt } from '../services/sms';
-import { SyncApi } from '../services/syncApi';
+import { OfflineError, SyncApi, SyncNotConfiguredError } from '../services/syncApi';
 
 export type PendingCheckout = {
   orderId: string;
@@ -51,6 +52,7 @@ type PosContextValue = {
   setCartQty(productId: string, qty: number): void;
   clearCart(): void;
   availableStock(productId: string): number;
+  loadVan(loads: Record<string, number>): Promise<void>;
   startCheckout(customer: Customer, paymentMethod: PaymentMethod): Promise<PendingCheckout>;
   resendOtp(checkout: PendingCheckout): Promise<PendingCheckout>;
   confirmCheckout(checkout: PendingCheckout, code: string): Promise<Order>;
@@ -60,20 +62,41 @@ type PosContextValue = {
 };
 
 const PosContext = createContext<PosContextValue | null>(null);
+const SignedInContext = createContext(false);
 
-const EMPTY_SNAPSHOT: SyncSnapshot = { lastPulledAt: null, lastPushedAt: null, cursor: null };
+/** Keeps navigator children from re-rendering when Pos context value identity changes. */
+const StableChildren = memo(function StableChildren({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+});
 
-/**
- * Loads the van's starting catalogue, customer list and stock into the device
- * caches. Once the sync endpoints are implemented these rows arrive from the
- * depot delta instead.
- */
+const EMPTY_SNAPSHOT: SyncSnapshot = {
+  lastPulledAt: null,
+  lastPushedAt: null,
+  cursor: null,
+  catalogPulledAt: null,
+};
+
+/** Seeds customers only. Product catalogue comes from the ECL commerce API. */
 async function seedIfEmpty(store: PosStore) {
-  const existing = await store.listProducts();
-  if (existing.length) return;
-  await store.upsertProducts(SEED_PRODUCTS);
-  await store.upsertCustomers(SEED_CUSTOMERS);
-  await store.upsertVanStock(SEED_VAN_STOCK);
+  const customers = await store.listCustomers();
+  if (!customers.length) {
+    await store.upsertCustomers(SEED_CUSTOMERS);
+  }
+}
+
+async function pullCatalog(store: PosStore, force = false): Promise<number> {
+  const [existing, snapshot] = await Promise.all([store.listProducts(), store.getSyncSnapshot()]);
+  if (!force && isCatalogFresh(snapshot.catalogPulledAt, existing.length)) {
+    return existing.length;
+  }
+  const products = await fetchCatalogProducts();
+  await store.replaceProducts(products);
+  await store.pruneOrphanVanStock(products.map((product) => product.id));
+  await store.setSyncSnapshot({
+    ...snapshot,
+    catalogPulledAt: new Date().toISOString(),
+  });
+  return products.length;
 }
 
 export function PosProvider({ children }: { children: ReactNode }) {
@@ -117,9 +140,29 @@ export function PosProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       engine.current = new SyncEngine(loaded, api);
       await seedIfEmpty(loaded);
+
       setStore(loaded);
       await refresh(loaded);
       setReady(true);
+
+      // Defer catalog network work so the first paint stays responsive.
+      const schedule =
+        typeof requestAnimationFrame === 'function'
+          ? (fn: () => void) => requestAnimationFrame(() => setTimeout(fn, 0))
+          : (fn: () => void) => setTimeout(fn, 0);
+
+      schedule(() => {
+        if (cancelled || !api.isOnline) return;
+        void (async () => {
+          try {
+            const before = (await loaded.listProducts()).length;
+            const after = await pullCatalog(loaded, false);
+            if (!cancelled && after !== before) await refresh(loaded);
+          } catch {
+            // Keep cached catalogue.
+          }
+        })();
+      });
     })();
     return () => {
       cancelled = true;
@@ -134,17 +177,38 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [api],
   );
 
+  const syncingRef = useRef(false);
+
   const runSync = useCallback(async () => {
     if (!store || !engine.current) return;
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
     setSyncError(null);
+
     try {
-      const outcome = await engine.current.sync();
-      setLastSync(outcome);
-    } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Sync failed');
-    } finally {
+      try {
+        await pullCatalog(store, false);
+      } catch (error) {
+        if (!(error instanceof TypeError)) {
+          setSyncError(error instanceof Error ? error.message : 'Catalog refresh failed');
+        }
+      }
+
+      try {
+        const outcome = await engine.current.sync();
+        setLastSync(outcome);
+      } catch (error) {
+        if (error instanceof SyncNotConfiguredError || error instanceof OfflineError) {
+          // Expected until the Laravel sync URL is configured / while offline.
+        } else {
+          setSyncError(error instanceof Error ? error.message : 'Order sync failed');
+        }
+      }
+
       await refresh(store);
+    } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
   }, [store, refresh]);
@@ -154,10 +218,23 @@ export function PosProvider({ children }: { children: ReactNode }) {
       if (!store) throw new Error('Offline storage is still starting');
       if (!username.trim()) throw new Error('Enter your rep ID');
       if (pin.length < 4) throw new Error('Invalid PIN');
+      try {
+        await api.login(username.trim(), pin);
+      } catch (error) {
+        if (!(error instanceof SyncNotConfiguredError) && !(error instanceof OfflineError)) {
+          throw error;
+        }
+      }
       setRep({ id: username, name: username, vanCode: 'VAN-07', depot: 'Accra Depot' });
       await refresh(store);
+      // Catalog refresh stays in the background — never block sign-in.
+      if (api.isOnline) {
+        void pullCatalog(store, false)
+          .then(async () => refresh(store))
+          .catch(() => undefined);
+      }
     },
-    [store, refresh],
+    [store, refresh, api],
   );
 
   const signOut = useCallback(() => {
@@ -166,9 +243,26 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCart([]);
   }, [api]);
 
+  const stockById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const line of vanStock) map.set(line.productId, line.qtyOnHand);
+    return map;
+  }, [vanStock]);
+
   const availableStock = useCallback(
-    (productId: string) => vanStock.find((line) => line.productId === productId)?.qtyOnHand ?? 0,
-    [vanStock],
+    (productId: string) => stockById.get(productId) ?? 0,
+    [stockById],
+  );
+
+  const loadVan = useCallback(
+    async (loads: Record<string, number>) => {
+      if (!store) throw new Error('Offline storage is still starting');
+      const entries = Object.entries(loads).filter(([, qty]) => qty > 0);
+      if (!entries.length) throw new Error('Add at least one unit to load');
+      await store.applyVanLoad(Object.fromEntries(entries));
+      await refresh(store);
+    },
+    [store, refresh],
   );
 
   const addToCart = useCallback((product: Product, qty = 1) => {
@@ -263,10 +357,10 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const printOrder = useCallback(
     async (order: Order) => {
       const payload = renderReceipt(order, rep ?? { id: 'rep', name: 'Rep', vanCode: 'VAN-07', depot: 'Accra Depot' }, printer.paper);
-      await printReceipt(payload);
+      await printReceipt(payload, printer);
       return payload;
     },
-    [rep, printer.paper],
+    [rep, printer],
   );
 
   const resetDemoData = useCallback(async () => {
@@ -276,8 +370,15 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCart([]);
     setLastSync(null);
     setSyncError(null);
+    if (api.isOnline) {
+      try {
+        await pullCatalog(store, true);
+      } catch (error) {
+        setSyncError(error instanceof Error ? error.message : 'Catalog refresh failed');
+      }
+    }
     await refresh(store);
-  }, [store, refresh]);
+  }, [store, refresh, api]);
 
   const pendingCount = useMemo(
     () => orders.filter((order) => order.status !== 'synced').length,
@@ -289,40 +390,88 @@ export function PosProvider({ children }: { children: ReactNode }) {
     return { subtotal, tax: round(subtotal * TAX_RATE), total: round(subtotal * (1 + TAX_RATE)) };
   }, [cart]);
 
-  const value: PosContextValue = {
-    ready,
-    rep,
-    online,
-    syncing,
-    storageBackend: store?.backend() ?? 'starting',
-    products,
-    customers,
-    vanStock,
-    orders,
-    cart,
-    snapshot,
-    printer,
-    lastSync,
-    syncError,
-    pendingCount,
-    cartTotals,
-    signIn,
-    signOut,
-    setOnline,
-    setPrinter,
-    addToCart,
-    setCartQty,
-    clearCart,
-    availableStock,
-    startCheckout,
-    resendOtp,
-    confirmCheckout,
-    printOrder,
-    syncNow: runSync,
-    resetDemoData,
-  };
+  const storageBackend = store?.backend() ?? 'starting';
 
-  return <PosContext.Provider value={value}>{children}</PosContext.Provider>;
+  const value = useMemo<PosContextValue>(
+    () => ({
+      ready,
+      rep,
+      online,
+      syncing,
+      storageBackend,
+      products,
+      customers,
+      vanStock,
+      orders,
+      cart,
+      snapshot,
+      printer,
+      lastSync,
+      syncError,
+      pendingCount,
+      cartTotals,
+      signIn,
+      signOut,
+      setOnline,
+      setPrinter,
+      addToCart,
+      setCartQty,
+      clearCart,
+      availableStock,
+      loadVan,
+      startCheckout,
+      resendOtp,
+      confirmCheckout,
+      printOrder,
+      syncNow: runSync,
+      resetDemoData,
+    }),
+    [
+      ready,
+      rep,
+      online,
+      syncing,
+      storageBackend,
+      products,
+      customers,
+      vanStock,
+      orders,
+      cart,
+      snapshot,
+      printer,
+      lastSync,
+      syncError,
+      pendingCount,
+      cartTotals,
+      signIn,
+      signOut,
+      setOnline,
+      addToCart,
+      setCartQty,
+      clearCart,
+      availableStock,
+      loadVan,
+      startCheckout,
+      resendOtp,
+      confirmCheckout,
+      printOrder,
+      runSync,
+      resetDemoData,
+    ],
+  );
+
+  return (
+    <SignedInContext.Provider value={Boolean(rep)}>
+      <PosContext.Provider value={value}>
+        <StableChildren>{children}</StableChildren>
+      </PosContext.Provider>
+    </SignedInContext.Provider>
+  );
+}
+
+/** Auth gate only — does not re-render when catalogue/cart/orders change. */
+export function useSignedIn() {
+  return useContext(SignedInContext);
 }
 
 export function usePos() {

@@ -1,3 +1,6 @@
+import { Platform } from 'react-native';
+
+import { isPrinterModuleAvailable, printOverBluetooth } from '../../modules/van-pos-printer/src';
 import { formatMoney } from '../core/cart';
 import type { Order, Rep } from '../core/types';
 
@@ -43,6 +46,7 @@ export type PrinterStatus = 'connected' | 'disconnected';
 
 export type BluetoothPrinter = {
   name: string;
+  /** Android MAC (AA:BB:…) or iOS CoreBluetooth UUID / printer name fragment. */
   address: string;
   paper: PaperWidth;
   status: PrinterStatus;
@@ -52,12 +56,35 @@ export const DEFAULT_PRINTER: BluetoothPrinter = {
   name: 'RPP02N Thermal',
   address: '66:22:11:AB:0C:4D',
   paper: 58,
-  status: 'connected',
+  status: 'disconnected',
 };
 
-export async function printReceipt(payload: string): Promise<void> {
-  // A device build pipes this through the Bluetooth SPP socket; in preview the
-  // payload is surfaced in-app instead.
+async function ensureAndroidBluetoothPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  const { PermissionsAndroid } = await import('react-native');
+  if (typeof PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT !== 'string') return true;
+  const result = await PermissionsAndroid.requestMultiple([
+    PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+    PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+  ]);
+  return (
+    result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED
+  );
+}
+
+export async function printReceipt(payload: string, printer: BluetoothPrinter = DEFAULT_PRINTER): Promise<void> {
+  if (isPrinterModuleAvailable() && (Platform.OS === 'android' || Platform.OS === 'ios')) {
+    const allowed = await ensureAndroidBluetoothPermission();
+    if (!allowed) {
+      throw new Error('Bluetooth permission was denied. Allow Bluetooth to print receipts.');
+    }
+    // iOS cannot use Android MACs — prefer printer name as the BLE scan needle.
+    const address =
+      Platform.OS === 'ios' && printer.address.includes(':') ? printer.name : printer.address;
+    await printOverBluetooth(address, payload);
+    return;
+  }
+
   await new Promise((resolve) => setTimeout(resolve, 500));
   if (__DEV__) console.log(payload);
 }

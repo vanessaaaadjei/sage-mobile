@@ -1,35 +1,40 @@
-import { Redirect } from 'expo-router';
-import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../components/Button';
 import { usePos } from '../state/PosProvider';
 import { colors, radius, spacing } from '../theme';
 
 export default function SignInScreen() {
-  const { ready, rep, signIn, online, setOnline, storageBackend } = usePos();
+  const { ready, signIn, storageBackend } = usePos();
   const [username, setUsername] = useState('kwame.mensah');
   const [pin, setPin] = useState('1234');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPin, setShowPin] = useState(false);
+  const pinRef = useRef<TextInput>(null);
 
-  if (rep) return <Redirect href="/(tabs)" />;
+  const canSubmit = ready && username.trim().length > 0 && pin.trim().length >= 4 && !busy;
 
   const submit = async () => {
+    if (!canSubmit) return;
     setBusy(true);
     setError(null);
     try {
       await signIn(username.trim(), pin.trim());
+      router.replace('/(tabs)');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Sign in failed');
     } finally {
@@ -38,90 +43,220 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-        <View style={styles.brand}>
-          <Text style={styles.brandMark}>VAN POS</Text>
-          <Text style={styles.brandSub}>Sage ERP field sales terminal</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Rep ID</Text>
-          <TextInput
-            style={styles.input}
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            accessibilityLabel="Rep ID"
-          />
-          <Text style={styles.label}>PIN</Text>
-          <TextInput
-            style={styles.input}
-            value={pin}
-            onChangeText={setPin}
-            secureTextEntry
-            keyboardType="number-pad"
-            accessibilityLabel="PIN"
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable style={[styles.primary, (busy || !ready) && styles.disabled]} disabled={busy || !ready} onPress={submit}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Sign in</Text>}
-          </Pressable>
-          <Text style={styles.hint}>
-            The PIN is checked on the device; connect an auth endpoint to validate it against the depot.
-          </Text>
-        </View>
-
-        <View style={styles.connectivity}>
-          <View>
-            <Text style={styles.connectivityLabel}>Network</Text>
-            <Text style={styles.connectivityValue}>{online ? 'Connected' : 'No coverage'}</Text>
+    <View style={styles.root}>
+      <SafeAreaView style={styles.hero} edges={['top']}>
+        <View style={styles.heroInner}>
+          <View style={styles.brandMark}>
+            <Text style={styles.brandMarkText}>EC</Text>
           </View>
-          <Switch value={online} onValueChange={setOnline} />
+          <View style={styles.heroCopy}>
+            <Text style={styles.brand}>Van POS</Text>
+            <Text style={styles.tagline}>Ernest Chemists · Route sales</Text>
+          </View>
         </View>
-        <Text style={styles.footer}>Local store: {storageBackend}</Text>
+      </SafeAreaView>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.sheet}>
+        <ScrollView
+          contentContainerStyle={styles.sheetContent}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}>
+          <View style={styles.formHeader}>
+            <Text style={styles.heading}>Sign in</Text>
+            <Text style={styles.sub}>Enter your rep credentials to open the van.</Text>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Rep ID</Text>
+            <View style={styles.inputShell}>
+              <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+              <TextInput
+                style={styles.input}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+                onSubmitEditing={() => pinRef.current?.focus()}
+                placeholder="rep.id"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Rep ID"
+              />
+            </View>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>PIN</Text>
+            <View style={styles.inputShell}>
+              <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+              <TextInput
+                ref={pinRef}
+                style={styles.input}
+                value={pin}
+                onChangeText={(next) => setPin(next.replace(/\D/g, '').slice(0, 8))}
+                secureTextEntry={!showPin}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                onSubmitEditing={submit}
+                placeholder="••••"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="PIN"
+                maxLength={8}
+              />
+              <Pressable
+                onPress={() => setShowPin((value) => !value)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={showPin ? 'Hide PIN' : 'Show PIN'}>
+                <Ionicons
+                  name={showPin ? 'eye-off-outline' : 'eye-outline'}
+                  size={18}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          {error ? (
+            <View style={styles.errorBox}>
+              <Ionicons name="alert-circle" size={16} color={colors.danger} />
+              <Text style={styles.error}>{error}</Text>
+            </View>
+          ) : null}
+
+          <Button
+            label={busy ? 'Signing in…' : 'Sign in'}
+            onPress={submit}
+            loading={busy}
+            disabled={!canSubmit}
+            style={styles.submit}
+          />
+
+       
+        </ScrollView>
+
+        <SafeAreaView edges={['bottom']} style={styles.footer}>
+          <Text style={styles.footerText}>Works offline. Orders sync when you are back online.</Text>
+        </SafeAreaView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  container: { flex: 1, padding: spacing.xl, justifyContent: 'center', gap: spacing.xl, maxWidth: 520, width: '100%', alignSelf: 'center' },
-  brand: { gap: spacing.xs },
-  brandMark: { fontSize: 32, fontWeight: '800', color: colors.primary, letterSpacing: 2 },
-  brandSub: { fontSize: 14, color: colors.textMuted },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, gap: spacing.sm },
-  label: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginTop: spacing.sm },
-  input: {
+  root: { flex: 1, backgroundColor: colors.surface },
+  hero: {
+    backgroundColor: colors.primary,
+    paddingBottom: spacing.xl,
+  },
+  heroInner: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  brandMark: {
+    width: 44,
+    height: 44,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandMarkText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textOnPrimary,
+    letterSpacing: 0.5,
+  },
+  heroCopy: { flex: 1, gap: 2 },
+  brand: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.textOnPrimary,
+    letterSpacing: -0.3,
+  },
+  tagline: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '500',
+  },
+  sheet: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  sheetContent: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  formHeader: { gap: 6, marginBottom: spacing.sm },
+  heading: { fontSize: 20, fontWeight: '600', color: colors.text, letterSpacing: -0.2 },
+  sub: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
+  field: { gap: 6 },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  inputShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.background,
+    minHeight: 48,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: Platform.OS === 'ios' ? spacing.md : spacing.sm,
     fontSize: 16,
     color: colors.text,
   },
-  error: { color: colors.danger, fontSize: 13, marginTop: spacing.sm },
-  primary: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md + 2,
-    alignItems: 'center',
-  },
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  disabled: { opacity: 0.5 },
-  hint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 18 },
-  connectivity: {
+  errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    gap: spacing.sm,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
   },
-  connectivityLabel: { fontSize: 12, color: colors.textMuted },
-  connectivityValue: { fontSize: 15, fontWeight: '700', color: colors.text },
-  footer: { textAlign: 'center', fontSize: 12, color: colors.textMuted },
+  error: { flex: 1, color: colors.danger, fontSize: 13, fontWeight: '500' },
+  submit: { marginTop: spacing.sm },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: spacing.xs,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  metaText: { fontSize: 12, color: colors.textMuted },
+  footer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  footerText: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
 });
